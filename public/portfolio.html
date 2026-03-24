@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agentwall Product Portfolio</title>
+    <style>
+      :root {
+        --bg: #07111b;
+        --panel: #0d1b2a;
+        --panel-2: #102235;
+        --text: #e7f0fa;
+        --muted: #9db2c9;
+        --accent: #5ce0c0;
+        --accent-2: #8cb8ff;
+        --line: rgba(157, 178, 201, 0.22);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Inter, "Segoe UI", system-ui, sans-serif;
+        color: var(--text);
+        background: radial-gradient(circle at 15% 0%, #13304d 0%, var(--bg) 38%), var(--bg);
+      }
+      .wrap { width: min(1160px, calc(100vw - 40px)); margin: 0 auto; padding: 28px 0 56px; }
+      .hero {
+        background: linear-gradient(180deg, var(--panel-2), var(--panel));
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        padding: 28px;
+      }
+      h1 { margin: 6px 0 10px; font-size: clamp(2rem, 5vw, 3rem); }
+      h2 { margin: 0 0 14px; font-size: 1.3rem; }
+      p { line-height: 1.5; }
+      .eyebrow { color: var(--accent); letter-spacing: .12em; text-transform: uppercase; font-size: .75rem; font-weight: 600; }
+      .muted { color: var(--muted); }
+      .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+      .card {
+        grid-column: span 4;
+        background: linear-gradient(180deg, rgba(16,34,53,.88), rgba(13,27,42,.92));
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 16px;
+      }
+      .wide { grid-column: span 12; }
+      .half { grid-column: span 6; }
+      ul { margin: 8px 0 0 18px; padding: 0; }
+      li { margin: 6px 0; color: var(--muted); }
+      .img {
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        margin-top: 10px;
+      }
+      .pill {
+        display: inline-block;
+        padding: 6px 10px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: var(--accent-2);
+        margin-right: 8px;
+        font-size: .8rem;
+      }
+      code { color: #b9ffd7; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      @media (max-width: 900px){ .card,.half,.wide{grid-column:span 12;} }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="hero">
+        <div class="eyebrow">Agentwall Portfolio</div>
+        <h1>Agentwall: The Runtime Control Plane for AI Agents</h1>
+        <p class="muted">
+          Agentwall is a provenance-aware enforcement layer between autonomous agents and real-world action surfaces.
+          It evaluates actions before execution, enforces policy across egress/tools/browser/content/identity/governance,
+          and emits operator-grade decision evidence.
+        </p>
+        <span class="pill">Execution-time controls</span>
+        <span class="pill">Default-deny egress</span>
+        <span class="pill">Human-in-the-loop approvals</span>
+        <span class="pill">Forensic auditability</span>
+      </section>
+
+      <section class="grid">
+        <article class="card half">
+          <h2>Problem</h2>
+          <p class="muted">Prompt safety doesn’t control runtime behavior. Once agents can fetch, click, run, and send, you need an enforcement plane that understands risk and provenance.</p>
+        </article>
+        <article class="card half">
+          <h2>Thesis</h2>
+          <p class="muted">Put policy at the exact boundary where intent becomes action. Agentwall decides, logs, and escalates where needed.</p>
+        </article>
+
+        <article class="card">
+          <h2>Product Surfaces</h2>
+          <ul>
+            <li>Security Console (operator UI)</li>
+            <li>Policy + inspection APIs</li>
+            <li>Approval queue + session controls</li>
+            <li>Evidence ledger + task graph</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h2>Key Capabilities</h2>
+          <ul>
+            <li>Provenance + trust labels</li>
+            <li>SSRF/private-range egress blocking</li>
+            <li>DLP + redaction controls</li>
+            <li>Actor-scoped policy rules</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h2>CLI Story</h2>
+          <ul>
+            <li><code>npm run onboard</code> config bootstrap</li>
+            <li><code>npm start</code> runtime</li>
+            <li><code>npm test</code> verification</li>
+            <li>Policy hot-reload from disk</li>
+          </ul>
+        </article>
+
+        <article class="card wide">
+          <h2>Rollout Model</h2>
+          <ul>
+            <li><strong>Observe:</strong> mirror risky calls, fail-open, collect evidence.</li>
+            <li><strong>Enforce Critical:</strong> block metadata/private-range egress and other high-confidence threats.</li>
+            <li><strong>Expand:</strong> enforce tool/browser/identity controls with approval routing.</li>
+            <li><strong>Harden:</strong> add watchdog containment, manifest re-approval, SOC pipeline integration.</li>
+          </ul>
+        </article>
+
+        <article class="card wide">
+          <h2>Screenshot — Security Console (Full)</h2>
+          <img class="img" src="/assets/agentwall-console-full.png" alt="Agentwall security console full page" />
+          <p class="muted">Live runtime capture from <code>http://127.0.0.1:3000</code>.</p>
+        </article>
+
+        <article class="card half">
+          <h2>Screenshot — Hero / Above the Fold</h2>
+          <img class="img" src="/assets/agentwall-console-hero.png" alt="Agentwall hero console view" />
+        </article>
+        <article class="card half">
+          <h2>Screenshot — Dashboard State API Surface</h2>
+          <img class="img" src="/assets/agentwall-api-dashboard-state.png" alt="Agentwall dashboard state API response" />
+        </article>
+
+
+
+        <article class="card wide">
+          <h2>Screenshot — Approval in Action</h2>
+          <img class="img" src="/assets/agentwall-approval-in-action.png" alt="Agentwall approval queue with pending high-risk request" />
+          <p class="muted">Live pending approval for a high-risk <code>secrets.read</code> action from untrusted provenance, routed to manual operator review.</p>
+        </article>
+
+        <article class="card wide">
+          <h2>Why It Matters</h2>
+          <p class="muted">
+            Agentwall gives teams the middle path between unsafe autonomy and unusable lockdown. It preserves shipping speed while adding enforceable guardrails,
+            explicit approvals, and audit evidence good enough for incident response, compliance, and operator trust.
+          </p>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

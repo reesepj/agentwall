@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agentwall Control Console</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true">AW</div>
+          <div>
+            <p class="eyebrow">Agentwall</p>
+            <h1>Security Console</h1>
+            <p class="topbar-copy">Operator-grade visibility across policy, approvals, provenance, and runtime enforcement.</p>
+          </div>
+        </div>
+        <div class="topbar-meta">
+          <div class="topbar-status">
+            <div id="service-badge" class="live-pill">
+              <span class="live-dot"></span>
+              Connecting
+            </div>
+            <div id="generated-at" class="timestamp">Syncing Agentwall runtime...</div>
+          </div>
+          <div id="service-facts" class="fact-strip"></div>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="hero panel">
+          <div class="hero-main">
+            <div>
+              <p class="eyebrow">Agentwall Runtime Posture</p>
+              <h2 id="service-status">Loading control posture</h2>
+              <p id="service-summary" class="muted">Connecting to live Agentwall state.</p>
+            </div>
+            <div id="hero-brief" class="hero-brief"></div>
+          </div>
+          <div class="hero-grid" id="hero-metrics"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Control Surface</p>
+              <h3>Security Controls</h3>
+            </div>
+          </div>
+          <div id="control-matrix" class="stack"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Operator Workbench</p>
+              <h3>Approval and Session Controls</h3>
+            </div>
+          </div>
+          <div id="operator-workbench" class="stack"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Priority Queue</p>
+              <h3>Operator Attention</h3>
+            </div>
+          </div>
+          <div id="priority-queue" class="stack"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">System Health</p>
+              <h3>Control Plane Status</h3>
+            </div>
+          </div>
+          <div id="system-health" class="stack"></div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Policy Execution</p>
+              <h3>Decision Distribution and Hot Rules</h3>
+            </div>
+          </div>
+          <div class="dual-grid">
+            <div>
+              <div class="subhead">Decision Mix</div>
+              <div id="policy-stats" class="stack"></div>
+            </div>
+            <div>
+              <div class="subhead">High-Frequency Rules</div>
+              <div id="policy-hotspots" class="stack"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Risk Posture</p>
+              <h3>Key Risk Signals</h3>
+            </div>
+          </div>
+          <div id="risk-posture" class="stack"></div>
+        </section>
+
+        <section class="panel panel-wide approvals-panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Approvals</p>
+              <h3>Queue and Resolution</h3>
+            </div>
+          </div>
+          <div id="approvals" class="stack"></div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Live Runtime</p>
+              <h3>Runtime Flows and Sessions</h3>
+            </div>
+          </div>
+          <div class="dual-grid">
+            <div>
+              <div class="subhead">Runtime Flows</div>
+              <div id="runtime-flows" class="stack"></div>
+            </div>
+            <div>
+              <div class="subhead">Tracked Sessions</div>
+              <div id="sessions" class="stack"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Evidence Graph</p>
+              <h3>Evidence Ledger and Task Graph</h3>
+            </div>
+          </div>
+          <div class="dual-grid">
+            <div>
+              <div class="subhead">Evidence Ledger</div>
+              <div id="evidence-ledger" class="stack"></div>
+            </div>
+            <div>
+              <div class="subhead">Task Graph</div>
+              <div id="task-graph" class="stack"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Drilldown</p>
+              <h3>Operator Investigation</h3>
+            </div>
+          </div>
+          <div id="drilldown" class="stack"></div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Audit Feed</p>
+              <h3>Runtime Decisions</h3>
+            </div>
+          </div>
+          <div id="audit-feed" class="feed"></div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Inspection Activity</p>
+              <h3>Tool, Network, and Content Flows</h3>
+            </div>
+          </div>
+          <div class="triple-grid">
+            <div>
+              <div class="subhead">Inspection Telemetry</div>
+              <div id="inspection-activity" class="stack"></div>
+            </div>
+            <div>
+              <div class="subhead">Prompt Risk</div>
+              <div id="prompt-risk-events" class="stack"></div>
+            </div>
+            <div>
+              <div class="subhead">Active Agents</div>
+              <div id="agents" class="stack"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Event Feed</p>
+              <h3>Cross-Plane Runtime Activity</h3>
+            </div>
+          </div>
+          <div id="event-feed" class="feed"></div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

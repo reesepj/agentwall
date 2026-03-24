@@ -1,0 +1,167 @@
+version: "1"
+
+rules:
+  - id: "openclaw:allow-approved-ai-and-research-egress"
+    description: "Allow approved AI and research destinations used by Athena"
+    plane: "network"
+    match:
+      type: "hostname-equals"
+      values:
+        - "api.openai.com"
+        - "api.anthropic.com"
+        - "generativelanguage.googleapis.com"
+        - "wttr.in"
+        - "search.brave.com"
+    decision: "allow"
+    riskLevel: "low"
+    reason: "Approved external destination"
+
+  - id: "openclaw:approve-untrusted-or-derived-egress"
+    description: "Require approval when untrusted or derived content drives outbound network access"
+    plane: "network"
+    match:
+      flow:
+        direction: "egress"
+      provenance:
+        source:
+          - "web"
+          - "email"
+          - "tool_output"
+          - "memory"
+        trustLabel:
+          - "untrusted"
+          - "derived"
+    decision: "approve"
+    riskLevel: "high"
+    reason: "External or derived content is attempting to drive egress"
+
+  - id: "openclaw:approve-shell-exec"
+    description: "Require approval for shell-like execution from OpenClaw"
+    plane: "tool"
+    match:
+      action:
+        includes:
+          - "exec"
+          - "shell"
+          - "bash"
+          - "terminal"
+    decision: "approve"
+    riskLevel: "high"
+    reason: "Shell execution is a high-risk control point"
+
+  - id: "openclaw:approve-destructive-tooling"
+    description: "Require approval when a tool action looks destructive"
+    plane: "tool"
+    match:
+      action:
+        includes:
+          - "delete"
+          - "remove"
+          - "unlink"
+          - "terminate"
+    decision: "approve"
+    riskLevel: "high"
+    reason: "Destructive tool action requires review"
+
+  - id: "openclaw:approve-credential-access"
+    description: "Require approval for credential or vault access"
+    plane: "identity"
+    match:
+      flow:
+        labels:
+          - "credential_access"
+    decision: "approve"
+    riskLevel: "critical"
+    reason: "Credential access is high impact and should be operator-visible"
+
+  - id: "openclaw:approve-secret-reads-by-payload"
+    description: "Fallback matcher for secret or token access requests"
+    plane: "identity"
+    match:
+      payload:
+        includes:
+          - "secret"
+          - "token"
+          - "password"
+          - "credential"
+          - "vault"
+          - "1password"
+          - "op://"
+    decision: "approve"
+    riskLevel: "critical"
+    reason: "Secret-bearing identity operation requires approval"
+
+  - id: "openclaw:approve-browser-oauth"
+    description: "Require approval for OAuth / authorization completion in browser automations"
+    plane: "browser"
+    match:
+      payload:
+        includes:
+          - "oauth"
+          - "authorize"
+          - "grant_access"
+          - "allow_access"
+    decision: "approve"
+    riskLevel: "high"
+    reason: "OAuth browser actions need explicit review"
+
+  - id: "openclaw:deny-browser-payment"
+    description: "Do not let browser automation complete payment or billing flows"
+    plane: "browser"
+    match:
+      payload:
+        includes:
+          - "payment"
+          - "checkout"
+          - "billing"
+          - "credit card"
+    decision: "deny"
+    riskLevel: "critical"
+    reason: "Payment actions must stay human-only"
+
+  - id: "openclaw:approve-manifest-drift"
+    description: "Require approval if tooling or MCP manifests drift"
+    plane: "tool"
+    match:
+      flow:
+        labels:
+          - "manifest_drift"
+    decision: "approve"
+    riskLevel: "critical"
+    reason: "Manifest drift can silently expand agent authority"
+
+
+  - id: "openclaw:deny-shared-channel-secret-reads-when-answer-only"
+    description: "Shared incident channels can discuss issues but may not retrieve secrets during answer-only containment"
+    plane: "identity"
+    match:
+      actor:
+        channelId:
+          - "telegram:group:incident-room"
+          - "discord:war-room"
+      control:
+        executionMode:
+          - "answer_only"
+    decision: "deny"
+    riskLevel: "critical"
+    reason: "Answer-only containment disables secret retrieval in shared channels"
+
+  - id: "openclaw:deny-moderator-shell-when-read-only"
+    description: "Freeze mutating shell actions for moderator/operator roles during read-only containment"
+    plane: "tool"
+    match:
+      action:
+        includes:
+          - "exec"
+          - "bash"
+          - "shell"
+      actor:
+        roleId:
+          - "moderator"
+          - "operator"
+      control:
+        executionMode:
+          - "read_only"
+    decision: "deny"
+    riskLevel: "high"
+    reason: "Read-only containment blocks moderator shell execution"
