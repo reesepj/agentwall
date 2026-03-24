@@ -23,7 +23,7 @@ A real approval request was injected into runtime (`tool: secrets.read`, high ri
 
 This closes the end-to-end operator story: **detect → route to approval → operator decision → audited outcome**.
 
-![Agentwall Approval In Action](public/assets/agentwall-approval-in-action.png)
+![Agentwall Approval In Action]
 
 ## What Agentwall currently ships
 
