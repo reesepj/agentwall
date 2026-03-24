@@ -7,3 +7,5 @@ coverage/
 .DS_Store
 agentwall-approvals.json
 agentwall.config.local.yaml
+agentwall.config.yaml
+policy.yaml
