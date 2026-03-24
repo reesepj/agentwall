@@ -5,8 +5,6 @@
 
 Agentwall is a **provenance-aware enforcement layer** that sits between autonomous agents and real-world action surfaces (network, tools, browser, content, identity, governance). It evaluates each action against policy and emits structured evidence for every allow, deny, redact, or approval decision.
 
-![Agentwall Security Console](public/assets/agentwall-console-hero.png)
-
 ## Why Agentwall
 
 Most teams can ship an agent demo quickly. Risk shows up when that agent can actually do things.
@@ -22,8 +20,6 @@ Agentwall gives you execution-time control where risk becomes real:
 ## Approval in action (portfolio-complete)
 
 A real approval request was injected into runtime (`tool: secrets.read`, high risk, untrusted provenance) with manual review required. The console captured the pending request in the live approvals queue before resolution timeout.
-
-![Agentwall Approval In Action](public/assets/agentwall-approval-in-action.png)
 
 This closes the end-to-end operator story: **detect → route to approval → operator decision → audited outcome**.
 
