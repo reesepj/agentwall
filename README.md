@@ -154,7 +154,7 @@ Approvals are persisted by default in `./agentwall-approvals.json`.
 
 ## OpenClaw monitor-first integration
 
-For OpenClaw/Athena rollout, begin with monitor-first sidecar insertion:
+For OpenClaw rollout, begin with monitor-first sidecar insertion:
 
 - `docs/openclaw-first-integration-plan.md`
 - `examples/openclaw-monitor-first.config.yaml`
@@ -184,17 +184,16 @@ See: `docs/public-release-strategy.md` and `docs/launch-readiness-checklist.md`.
 
 ## Visual asset index
 
+Approved launch screenshots:
+
 - `docs/assets/agentwall-console-full.png`
 - `docs/assets/agentwall-console-hero.png`
-- `docs/assets/agentwall-api-dashboard-state.png`
-- `docs/assets/agentwall-portfolio-page.png`
 - `docs/assets/agentwall-approval-in-action.png`
 
 Publishing copies:
 
 - `public/assets/agentwall-console-full.png`
 - `public/assets/agentwall-console-hero.png`
-- `public/assets/agentwall-api-dashboard-state.png`
 - `public/assets/agentwall-approval-in-action.png`
 
 ## License

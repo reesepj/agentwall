@@ -93,21 +93,18 @@ Operational note:
 
 ## 7) Screenshots / Visual Assets
 
-All captured on 2026-03-23 from local runtime `http://127.0.0.1:3000`.
+Approved launch screenshots captured from a local validation environment.
 
 1. **Console Full View**  
    `docs/assets/agentwall-console-full.png`
 2. **Console Hero / Above the Fold**  
    `docs/assets/agentwall-console-hero.png`
-3. **Dashboard State API Surface**  
-   `docs/assets/agentwall-api-dashboard-state.png`
-4. **Approval in Action (Pending Human Decision)**  
+3. **Approval in Action (Pending Human Decision)**  
    `docs/assets/agentwall-approval-in-action.png`
 
 Web-copy duplicates for lightweight publishing:
 - `public/assets/agentwall-console-full.png`
 - `public/assets/agentwall-console-hero.png`
-- `public/assets/agentwall-api-dashboard-state.png`
 - `public/assets/agentwall-approval-in-action.png`
 
 ## 8) Approval Story (Operator Loop Complete)
@@ -130,11 +127,9 @@ It gives teams:
 
 ## 10) Capture Path
 
-Screenshot capture was completed via Playwright CLI against the running local service:
+Screenshot capture can be reproduced with Playwright against a local Agentwall instance.
 
-```bash
-npx playwright screenshot --device="Desktop Chrome" --full-page http://127.0.0.1:3000 docs/assets/agentwall-console-full.png
-npx playwright screenshot --device="Desktop Chrome" http://127.0.0.1:3000 docs/assets/agentwall-console-hero.png
-npx playwright screenshot --device="Desktop Chrome" http://127.0.0.1:3000/api/dashboard/state docs/assets/agentwall-api-dashboard-state.png
-npx playwright screenshot --device="Desktop Chrome" --full-page http://127.0.0.1:3000 docs/assets/agentwall-approval-in-action.png
-```
+Approved launch set:
+- `docs/assets/agentwall-console-full.png`
+- `docs/assets/agentwall-console-hero.png`
+- `docs/assets/agentwall-approval-in-action.png`

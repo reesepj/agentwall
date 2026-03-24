@@ -1,4 +1,4 @@
-# Agentwall monitor-first config for OpenClaw / Athena sidecar rollout.
+# Agentwall monitor-first config for OpenClaw sidecar rollout.
 # Safe default: loopback only, file-backed approvals, watchdog in monitor mode.
 
 port: 3015

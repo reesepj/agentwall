@@ -1,6 +1,6 @@
 # Agentwall → OpenClaw first integration plan
 
-This is the first practical rollout path for turning Agentwall into real security infrastructure for Athena / Reese's OpenClaw environment without breaking live operations.
+This is the first practical rollout path for turning Agentwall into real security infrastructure for an OpenClaw environment without breaking live operations.
 
 ## Goals
 
@@ -280,9 +280,9 @@ Translate OpenClaw activity into Agentwall contexts like this:
 
 ---
 
-## Operational recommendations for Athena
+## Operational recommendations for OpenClaw deployments
 
-- Treat Agentwall as Athena's policy oracle first, not as an automatic kill-switch.
+- Treat Agentwall as a policy oracle first, not as an automatic kill-switch.
 - Keep the first live rollout local-only and reversible.
 - Use one or two real workflows first:
   - outbound web research
@@ -299,7 +299,7 @@ Still needed outside this repo:
 1. wire `src/integrations/openclaw/web-fetch-egress.ts` into OpenClaw's native `web_fetch` tool path (the wrapper is implemented; direct gateway patch still pending)
 2. Mission Control or gateway-side source of truth for execution-mode state (`normal` / `read_only` / `answer_only`)
 3. real environment allowlists for approved hosts
-4. manifest fingerprint collection for actual tool / MCP manifests in Reese's stack
+4. manifest fingerprint collection for actual tool / MCP manifests in the target stack
 5. heartbeat source wiring from OpenClaw sessions into Agentwall watchdog state
 6. operator workflow for acting on approvals, drift findings, and scoped containment changes
 
@@ -330,46 +330,7 @@ Validation harness:
 - `tests/openclaw-preflight.integration.test.ts` exercises observe-mode pass-through, fail-open behavior when Agentwall is down, and critical-only enforcement behavior.
 - `tests/openclaw-observed-web-fetch.integration.test.ts` validates side-by-side wiring with an actual outbound HTTP server target, verifies telemetry events, and verifies fail-open pass-through when Agentwall is unreachable.
 
-## Runtime patch status (live OpenClaw path)
+## Runtime integration status
 
-As of this patch, the **actual OpenClaw production `web_fetch` runtime path** (installed package dist file) is wired to an Agentwall preflight call sequence before outbound HTTP execution:
-
-- live file: `~/.npm-global/lib/node_modules/openclaw/dist/pi-embedded-CzQCqSlH.js`
-- live function path: `createWebFetchTool(...) -> runWebFetch(...) -> fetchWithWebToolsNetworkGuard(...)`
-- new preflight hook: `maybeRunAgentwallWebFetchPreflight(params)` called inside `runWebFetch` before outbound fetch
-
-### Safety / rollout behavior
-
-- default mode is **observe** (`AGENTWALL_WEB_FETCH_MODE`/`AGENTWALL_MODE` default to `observe`)
-- **fail-open** is preserved:
-  - if Agentwall is down/unreachable/times out, outbound `web_fetch` still proceeds
-  - fail-open is logged via debug telemetry (`[agentwall:web_fetch] ... fail-open ...`)
-- optional strict mode remains available (`enforce_critical`) for future staged rollout
-
-### Runtime config (env)
-
-- `AGENTWALL_WEB_FETCH_URL` (preferred) or `AGENTWALL_URL`
-- `AGENTWALL_WEB_FETCH_MODE` (or `AGENTWALL_MODE`) = `observe` (default) or `enforce_critical`
-- `AGENTWALL_WEB_FETCH_TIMEOUT_MS` (or `AGENTWALL_TIMEOUT_MS`, default `1000`)
-
-### Telemetry surface
-
-`web_fetch` payload now includes optional:
-
-- `agentwallPreflight.mode`
-- `agentwallPreflight.networkReason`
-- `agentwallPreflight.policyReason`
-- `agentwallPreflight.networkFailOpen`
-- `agentwallPreflight.policyFailOpen`
-- `agentwallPreflight.networkBlocked`
-- `agentwallPreflight.policyBlocked`
-
-plus debug log line:
-
-- `[agentwall:web_fetch] mode=... networkBlocked=... policyBlocked=... networkFailOpen=... policyFailOpen=...`
-
-### Caveats
-
-- this is currently a **dist-level patch** to the installed OpenClaw package, not yet upstream source-level in OpenClaw repo.
-- package upgrades/reinstalls can overwrite this until upstreamed.
-- this patch targets `web_fetch` runtime egress path only; other outbound tools are not covered by this change.
+The adapter contracts and integration tests in this repository are ready for staged rollout.
+Production runtime wiring should be implemented in upstream OpenClaw source integrations (not package-dist patches) before broad deployment.

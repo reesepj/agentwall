@@ -35,7 +35,7 @@ Only true last-mile maintainer/admin steps are left unchecked.
 - [ ] Decide canonical public clone URL/org and update README if needed.
 - [ ] Create initial release tag (`v0.1.0`) and attach release notes.
 - [ ] Publish announcement post (problem, why now, demo, quickstart, roadmap).
-- [ ] Final external account setup items Reese chose to do last (public inboxes + service accounts).
+- [ ] Final external account setup items chosen by the maintainer (public inboxes + service accounts).
 
 ## 6) Immediate post-launch guardrails
 - [ ] Enable notifications/triage routine for issues and security reports.

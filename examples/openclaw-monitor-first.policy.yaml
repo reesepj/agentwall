@@ -2,7 +2,7 @@ version: "1"
 
 rules:
   - id: "openclaw:allow-approved-ai-and-research-egress"
-    description: "Allow approved AI and research destinations used by Athena"
+    description: "Allow approved AI and research destinations"
     plane: "network"
     match:
       type: "hostname-equals"
