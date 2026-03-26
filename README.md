@@ -1,8 +1,4 @@
-#Agentwall
-
 <img width="900" height="300" alt="logo_full_transparent" src="https://github.com/user-attachments/assets/696b7f81-b70c-4eb2-9ce9-c49dd46b72fd" />
-
-
 > **The runtime control plane for AI agents.**  
 > Stop risky actions at execution time — before an agent can send, fetch, click, run, or exfiltrate.
 
