@@ -1,6 +1,7 @@
-# Agentwall
+![logo_full](https://github.com/user-attachments/assets/58e2d3a1-efe8-4d98-b598-5dc8f58d9d6e)# Agentwall
 
-<img width="800" height="300" alt="logo_full" src="https://github.com/user-attachments/assets/53c73a39-cff2-4c75-a5b9-fab14485287d" />
+![Uploading log<svg width="800" height="300" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="#0B0F14"/><rect x="50" y="80" width="40" height="40" rx="4" fill="#1A1F26"/><rect x="102" y="80" width="40" height="40" rx="4" fill="#1A1F26"/><rect x="154" y="80" width="40" height="40" rx="4" fill="#4F8CFF"/><rect x="50" y="132" width="40" height="40" rx="4" fill="#1A1F26"/><rect x="102" y="132" width="40" height="40" rx="4" fill="#4F8CFF"/><rect x="154" y="132" width="40" height="40" rx="4" fill="#1A1F26"/><rect x="50" y="184" width="40" height="40" rx="4" fill="#4F8CFF"/><rect x="102" y="184" width="40" height="40" rx="4" fill="#1A1F26"/><rect x="154" y="184" width="40" height="40" rx="4" fill="#1A1F26"/><text x="250" y="150" fill="#FFFFFF" font-size="48" font-family="Arial">AgentWall</text></svg>o_full.svg…]()
+
 
 
 > **The runtime control plane for AI agents.**  
