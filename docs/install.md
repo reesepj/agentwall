@@ -41,11 +41,14 @@ agentwall doctor
 agentwall start
 ```
 
-## Verify health
+## Verify health and policy decisions
 
 ```bash
 curl http://127.0.0.1:3000/health
+npm run smoke:local
 ```
+
+`npm run smoke:local` checks `/health` plus representative allowed and denied `/evaluate` decisions against the running service. Use `AGENTWALL_URL=http://host:port npm run smoke:local` for a non-default target.
 
 ## Uninstall
 

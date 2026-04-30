@@ -11,6 +11,7 @@
     "uninstall:system": "bash ./scripts/agentwall-uninstall.sh",
     "test": "node --experimental-vm-modules node_modules/.bin/jest",
     "lint": "tsc --noEmit",
+    "smoke:local": "node scripts/smoke-local.js",
     "cli": "node dist/cli.js",
     "init": "node dist/cli.js init",
     "doctor": "node dist/cli.js doctor"

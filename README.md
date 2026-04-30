@@ -54,11 +54,14 @@ node dist/cli.js start
 
 Default address: `http://127.0.0.1:3000`
 
-Run tests:
+Run tests and the live smoke check:
 
 ```bash
 npm test
+npm run smoke:local
 ```
+
+`npm run smoke:local` expects Agentwall to already be running. Override the target with `AGENTWALL_URL=http://host:port npm run smoke:local`.
 
 ## CLI
 
