@@ -1,37 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT_DIR"
+cd /home/reese/projects/agentwall
 
-AGENTWALL_URL="${AGENTWALL_URL:-http://127.0.0.1:3000}"
+./scripts/check.sh
 
-if [[ ! -d node_modules ]]; then
-  echo "node_modules missing; installing locked dependencies with npm ci"
-  npm ci
-fi
-
-echo "==> Type-checking"
-npm run lint
-
-echo "==> Building"
-npm run build
-
-echo "==> Testing"
-npm test -- --runInBand
-
-echo "==> Auditing high+ vulnerabilities"
-npm audit --audit-level=high
-
-cat <<EOF
-
-Agentwall deploy check passed.
-Start locally:
-  npm run start
-
-Smoke the running service:
-  AGENTWALL_URL=$AGENTWALL_URL npm run smoke:local
-
-Default service URL:
-  $AGENTWALL_URL
-EOF
+echo '[Agentwall] no canonical runtime restart configured yet'
+echo '[Agentwall] deploy is repo-level verification only right now; add an explicit service/runtime target before using this as a live deploy path'

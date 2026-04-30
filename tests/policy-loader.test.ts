@@ -126,6 +126,54 @@ rules:
     expect(result.decision).toBe("deny");
   });
 
+  it("matches subject plus actor scope for channel-specific agent blockers", () => {
+    const policyPath = writePolicyFile(`
+version: "1"
+rules:
+  - id: "custom:deny-finance-agent-file-write-in-shared-slack"
+    description: "Shared Slack finance room cannot drive filesystem writes through the finance analyst agent"
+    plane: "tool"
+    match:
+      action:
+        includes: ["write", "patch"]
+      actor:
+        channelId: ["slack:finance-room"]
+      subject:
+        agentId: ["finance-analyst-agent"]
+    decision: "deny"
+    riskLevel: "high"
+    reason: "Shared business channels cannot mutate the finance analyst agent filesystem"
+`);
+    tempDirs.push(path.dirname(policyPath));
+
+    const rules = loadDeclarativePolicyRules(policyPath);
+    const engine = new PolicyEngine([...builtinRules, ...rules], "allow");
+
+    const blocked = engine.evaluate(ctx({
+      agentId: "finance-analyst-agent",
+      plane: "tool",
+      action: "write_file",
+      payload: { path: "/srv/internal/forecast.md", content: "draft" },
+      actor: { channelId: "slack:finance-room", userId: "u-finance" },
+    }));
+    expect(blocked.matchedRules).toContain("custom:deny-finance-agent-file-write-in-shared-slack");
+    expect(blocked.decision).toBe("deny");
+    expect(rules[0]?.scope).toEqual({
+      actor: { channelIds: ["slack:finance-room"], userIds: undefined, roleIds: undefined },
+      subject: { agentIds: ["finance-analyst-agent"], sessionIds: undefined },
+    });
+
+    const differentAgent = engine.evaluate(ctx({
+      agentId: "sales-assistant-agent",
+      plane: "tool",
+      action: "write_file",
+      payload: { path: "/srv/internal/forecast.md", content: "draft" },
+      actor: { channelId: "slack:finance-room", userId: "u-finance" },
+    }));
+    expect(differentAgent.matchedRules).not.toContain("custom:deny-finance-agent-file-write-in-shared-slack");
+    expect(differentAgent.decision).toBe("allow");
+  });
+
   it("rejects hostname rules that target private hosts", () => {
     const policyPath = writePolicyFile(`
 version: "1"

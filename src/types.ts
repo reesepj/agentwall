@@ -106,6 +106,21 @@ export type AgentContext = z.infer<typeof AgentContextSchema>;
 
 // --- Policy ---
 
+export interface PolicyRuleScope {
+  actor?: {
+    channelIds?: string[];
+    userIds?: string[];
+    roleIds?: string[];
+  };
+  subject?: {
+    agentIds?: string[];
+    sessionIds?: string[];
+  };
+  control?: {
+    executionModes?: ExecutionMode[];
+  };
+}
+
 export interface PolicyRule {
   id: string;
   description: string;
@@ -114,6 +129,7 @@ export interface PolicyRule {
   decision: Decision;
   riskLevel: RiskLevel;
   reason: string;
+  scope?: PolicyRuleScope;
 }
 
 export interface DetectionMatch {
@@ -139,7 +155,55 @@ export interface PolicyResult {
   detections: DetectionMatch[];
 }
 
+export interface CapabilityTicketFlowConstraints {
+  direction: FlowDirection;
+  labels?: FlowLabel[];
+  target?: string;
+  highRisk?: boolean;
+  crossesBoundary?: boolean;
+}
+
+export interface CapabilityTicketConstraints {
+  payloadKeys: string[];
+  flow?: CapabilityTicketFlowConstraints;
+}
+
+export interface CapabilityTicket {
+  id: string;
+  issuedAt: string;
+  expiresAt: string;
+  decision: Decision;
+  riskLevel: RiskLevel;
+  agentId: string;
+  sessionId?: string;
+  plane: Plane;
+  action: string;
+  actor?: ActorScope;
+  constraints: CapabilityTicketConstraints;
+  signature: string;
+}
+
+export interface PolicyEvaluationResponse {
+  decision: Decision;
+  riskLevel: RiskLevel;
+  matchedRules: string[];
+  reasons: string[];
+  requiresApproval: boolean;
+  highRiskFlow: boolean;
+  detections: DetectionMatch[];
+  auditEventId: string;
+  capabilityTicket?: CapabilityTicket;
+}
+
 // --- Audit ---
+
+export interface AuditIntegrity {
+  chainIndex: number;
+  hash: string;
+  previousHash: string | null;
+  algorithm: "sha256";
+  status: "verified-local";
+}
 
 export interface AuditEvent {
   id: string;
@@ -156,8 +220,10 @@ export interface AuditEvent {
   highRiskFlow: boolean;
   detections?: DetectionMatch[];
   metadata?: Record<string, string>;
+  actor?: ActorScope;
   provenance?: ProvenanceTag[];
   flow?: FlowDescriptor;
+  integrity: AuditIntegrity;
 }
 
 // --- Approval ---
@@ -248,25 +314,54 @@ export type EgressPolicy = z.infer<typeof EgressPolicySchema>;
 export const ManifestSubjectTypeSchema = z.enum(["tool", "mcp_server"]);
 export type ManifestSubjectType = z.infer<typeof ManifestSubjectTypeSchema>;
 
+export const ManifestAttestationEnvelopeSchema = z.object({
+  version: z.literal(1),
+  algorithm: z.literal("hmac-sha256"),
+  subjectId: z.string(),
+  subjectType: ManifestSubjectTypeSchema,
+  fingerprintHash: z.string(),
+  fingerprintAlgorithm: z.literal("sha256"),
+  issuedAt: z.string(),
+  signer: z.string(),
+  signature: z.string(),
+});
+export type ManifestAttestationEnvelope = z.infer<typeof ManifestAttestationEnvelopeSchema>;
+
 export const ManifestFingerprintSchema = z.object({
   algorithm: z.literal("sha256"),
   hash: z.string(),
   manifestSize: z.number(),
   source: z.string().optional(),
   approvedAt: z.string().optional(),
+  attestation: ManifestAttestationEnvelopeSchema.optional(),
 });
 export type ManifestFingerprint = z.infer<typeof ManifestFingerprintSchema>;
 
 export const ManifestIntegrityStatusSchema = z.enum(["approved", "drifted", "missing", "untracked"]);
 export type ManifestIntegrityStatus = z.infer<typeof ManifestIntegrityStatusSchema>;
 
+export const ManifestTrustStateSchema = z.enum(["trusted", "review_required", "untrusted"]);
+export type ManifestTrustState = z.infer<typeof ManifestTrustStateSchema>;
+
+export const ManifestAttestationStatusSchema = z.enum(["valid", "missing", "invalid", "not_applicable"]);
+export type ManifestAttestationStatus = z.infer<typeof ManifestAttestationStatusSchema>;
+
+export const ManifestAttestationAssessmentSchema = z.object({
+  status: ManifestAttestationStatusSchema,
+  signer: z.string().optional(),
+  issuedAt: z.string().optional(),
+});
+export type ManifestAttestationAssessment = z.infer<typeof ManifestAttestationAssessmentSchema>;
+
 export const ManifestDriftSchema = z.object({
   subjectId: z.string(),
   subjectType: ManifestSubjectTypeSchema,
   status: ManifestIntegrityStatusSchema,
+  trustState: ManifestTrustStateSchema,
   changed: z.boolean(),
   requiresReapproval: z.boolean(),
   reason: z.string(),
+  attestation: ManifestAttestationAssessmentSchema,
   currentFingerprint: ManifestFingerprintSchema,
   approvedFingerprint: ManifestFingerprintSchema.optional(),
 });

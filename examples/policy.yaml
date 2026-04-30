@@ -31,6 +31,20 @@ rules:
     riskLevel: "low"
     reason: "Approved egress destination"
 
+  - id: "custom:deny-finance-agent-file-write-in-shared-slack"
+    description: "Shared Slack finance room cannot drive filesystem writes through the finance analyst agent"
+    plane: "tool"
+    match:
+      action:
+        includes: ["write", "patch"]
+      actor:
+        channelId: ["slack:finance-room"]
+      subject:
+        agentId: ["finance-analyst-agent"]
+    decision: "deny"
+    riskLevel: "high"
+    reason: "Shared business channels cannot mutate the finance analyst agent filesystem"
+
   - id: "custom:deny-discord-moderator-shell-when-read-only"
     description: "Freeze shell execution for Discord moderators during read-only containment"
     plane: "tool"

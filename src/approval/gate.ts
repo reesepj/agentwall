@@ -6,6 +6,7 @@ import {
   PersistedApprovalDecision,
   PersistedPendingApproval,
 } from "./store";
+import { ApprovalNotifier, ApprovalNotifierOptions } from "./notifier";
 
 export type ApprovalMode = "auto" | "always" | "never";
 
@@ -36,6 +37,7 @@ export class ApprovalGate {
   private mode: ApprovalMode;
   private defaultTimeoutMs: number;
   private readonly store: ApprovalQueueStore;
+  private readonly notifier: ApprovalNotifier;
   private pending = new Map<string, PendingApproval>();
   private history: PersistedApprovalDecision[] = [];
 
@@ -43,11 +45,13 @@ export class ApprovalGate {
     mode: ApprovalMode = "auto",
     defaultTimeoutMs = 30_000,
     backend: ApprovalPersistenceBackend = "file",
-    persistencePath = "./agentwall-approvals.json"
+    persistencePath = "./agentwall-approvals.json",
+    notifierOptions: ApprovalNotifierOptions = {}
   ) {
     this.mode = mode;
     this.defaultTimeoutMs = defaultTimeoutMs;
     this.store = new ApprovalQueueStore(backend, persistencePath);
+    this.notifier = new ApprovalNotifier(notifierOptions);
     this.restorePersistedState();
   }
 
@@ -58,16 +62,19 @@ export class ApprovalGate {
     if (this.mode === "never") {
       const response = this.makeResponse(requestId, "approved", "agentwall-auto", "Auto-approved (mode=never)");
       this.recordDecision(requestId, req, response);
+      this.notifier.notifyResolved(requestId, req, response, "auto");
       return { requestId, response: Promise.resolve(response), mode: "auto" };
     }
 
     if (this.mode === "auto" && !req.policyResult.requiresApproval) {
       const response = this.makeResponse(requestId, "approved", "agentwall-auto", "Auto-approved by policy");
       this.recordDecision(requestId, req, response);
+      this.notifier.notifyResolved(requestId, req, response, "auto");
       return { requestId, response: Promise.resolve(response), mode: "auto" };
     }
 
     // mode=always, or requiresApproval=true with mode=auto
+    this.notifier.notifyPending(requestId, req, "manual");
     return { requestId, response: this.enqueue(requestId, req, timeoutMs), mode: "manual" };
   }
 
@@ -94,14 +101,16 @@ export class ApprovalGate {
     this.pending.delete(requestId);
     const response = this.makeResponse(requestId, decision, approvedBy, note);
     this.recordDecision(requestId, entry.request, response, entry.createdAt);
+    this.notifier.notifyResolved(requestId, entry.request, response, "manual");
     entry.resolve?.(response);
     return response;
   }
 
-  listPending(): Array<{ requestId: string; agentId: string; action: string; plane: string; createdAt: number }> {
+  listPending(): Array<{ requestId: string; agentId: string; sessionId?: string; action: string; plane: string; createdAt: number }> {
     return Array.from(this.pending.values()).map((p) => ({
       requestId: p.requestId,
       agentId: p.request.context.agentId,
+      sessionId: p.request.context.sessionId,
       action: p.request.context.action,
       plane: p.request.context.plane,
       createdAt: p.createdAt,
@@ -226,6 +235,7 @@ export class ApprovalGate {
         `Timed out after ${pendingApproval.expiresAt - pendingApproval.createdAt}ms`
       );
       this.recordDecision(pendingApproval.requestId, pendingApproval.request, response, pendingApproval.createdAt);
+      this.notifier.notifyResolved(pendingApproval.requestId, pendingApproval.request, response, "manual");
       entry.resolve?.(response);
     }, delayMs);
     timer.unref();

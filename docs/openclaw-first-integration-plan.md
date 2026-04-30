@@ -112,6 +112,11 @@ Run Agentwall as a sidecar service bound to loopback.
 - generate audit events from mirrored requests only
 - confirm rule quality and dashboard usefulness
 
+Current local-rebuild note:
+- the old OpenClaw runtime was retired from Reese's cleaned setup on 2026-03-27
+- the preserved live Agentwall runtime now answers on `http://127.0.0.1:3015`
+- see `docs/openclaw-live-handoff-2026-03-29.md` for the current endpoint, smoke path, and the exact monitor-first handoff
+
 ### Phase 1 — egress mirror + critical hard stops
 
 Integrate only network preflight around outbound requests.

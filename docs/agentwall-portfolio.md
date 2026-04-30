@@ -24,11 +24,9 @@ Prompt safety and static filters are not enough for runtime behavior. Agentwall 
 ## 3) Product Surfaces (Current)
 
 ### A. Security Console (Operator UI)
-- Real-time posture overview
-- Approval/session controls
-- Priority queue and risk signals
-- Policy execution mix and hotspots
-- Audit feed, inspection activity, evidence/task graph
+- **Core Console (default):** posture, threats, approvals, key controls, and incident/flood operations
+- **Advanced mode:** policy execution mix/hotspots, runtime/session mapping, drilldowns, audit and event feeds, inspection telemetry, evidence/task graph
+- Explicit mode switch keeps executive/operator workflows clean without sacrificing depth
 
 ### B. Policy & Inspection API
 - `/evaluate` for policy decisions
@@ -55,7 +53,7 @@ Prompt safety and static filters are not enough for runtime behavior. Agentwall 
 ## 5) Installation + CLI Story
 
 ```bash
-git clone https://github.com/reesepj/agentwall.git
+git clone https://github.com/your-org/agentwall
 cd agentwall
 npm install
 npm run onboard

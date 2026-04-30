@@ -1,7 +1,13 @@
 import * as fs from "fs";
 import * as path from "path";
 import { PolicyRule } from "../types";
-import { loadDeclarativePolicyRules } from "./loader";
+import {
+  compileDeclarativePolicyRules,
+  DeclarativePolicyFile,
+  DeclarativePolicyRule,
+  loadDeclarativePolicyFile,
+  writeDeclarativePolicyFile,
+} from "./loader";
 
 type LoggerLike = Pick<Console, "error" | "warn">;
 
@@ -14,7 +20,16 @@ export interface PolicyRuntimeOptions {
 export interface ReloadResult {
   reloaded: boolean;
   rules: PolicyRule[];
+  definitions: DeclarativePolicyRule[];
   error?: Error;
+}
+
+function cloneDefinitions(definitions: DeclarativePolicyRule[]): DeclarativePolicyRule[] {
+  return JSON.parse(JSON.stringify(definitions)) as DeclarativePolicyRule[];
+}
+
+function defaultPolicyFile(): DeclarativePolicyFile {
+  return { version: "1", rules: [] };
 }
 
 export class FileBackedPolicyRuntime {
@@ -23,6 +38,7 @@ export class FileBackedPolicyRuntime {
   private readonly watchEnabled: boolean;
   private readonly watchDebounceMs: number;
   private rules: PolicyRule[];
+  private policyFile: DeclarativePolicyFile;
   private watcher?: fs.FSWatcher;
   private reloadTimer?: NodeJS.Timeout;
 
@@ -31,22 +47,56 @@ export class FileBackedPolicyRuntime {
     this.logger = options.logger ?? console;
     this.watchEnabled = options.watch ?? true;
     this.watchDebounceMs = options.watchDebounceMs ?? 50;
-    this.rules = loadDeclarativePolicyRules(this.policyPath);
+    this.policyFile = loadDeclarativePolicyFile(this.policyPath);
+    this.rules = compileDeclarativePolicyRules(this.policyFile);
+  }
+
+  getPolicyPath(): string {
+    return this.policyPath;
   }
 
   getRules(): PolicyRule[] {
     return [...this.rules];
   }
 
+  getDeclarativeRules(): DeclarativePolicyRule[] {
+    return cloneDefinitions(this.policyFile.rules);
+  }
+
   reload(): ReloadResult {
     try {
-      const nextRules = loadDeclarativePolicyRules(this.policyPath);
-      this.rules = nextRules;
-      return { reloaded: true, rules: this.getRules() };
+      const nextPolicyFile = loadDeclarativePolicyFile(this.policyPath);
+      this.policyFile = nextPolicyFile;
+      this.rules = compileDeclarativePolicyRules(nextPolicyFile);
+      return { reloaded: true, rules: this.getRules(), definitions: this.getDeclarativeRules() };
     } catch (error) {
       const failure = error instanceof Error ? error : new Error(String(error));
       this.logger.error(`Failed to reload policy file ${this.policyPath}: ${failure.message}`);
-      return { reloaded: false, rules: this.getRules(), error: failure };
+      return { reloaded: false, rules: this.getRules(), definitions: this.getDeclarativeRules(), error: failure };
+    }
+  }
+
+  upsertDeclarativeRule(rule: DeclarativePolicyRule): ReloadResult {
+    try {
+      const currentPolicy = fs.existsSync(this.policyPath) ? loadDeclarativePolicyFile(this.policyPath) : defaultPolicyFile();
+      const nextRules = [...currentPolicy.rules];
+      const existingIndex = nextRules.findIndex((item) => item.id === rule.id);
+      if (existingIndex >= 0) {
+        nextRules[existingIndex] = rule;
+      } else {
+        nextRules.push(rule);
+      }
+
+      writeDeclarativePolicyFile(this.policyPath, {
+        version: currentPolicy.version ?? "1",
+        rules: nextRules,
+      });
+
+      return this.reload();
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error(String(error));
+      this.logger.error(`Failed to write policy file ${this.policyPath}: ${failure.message}`);
+      return { reloaded: false, rules: this.getRules(), definitions: this.getDeclarativeRules(), error: failure };
     }
   }
 

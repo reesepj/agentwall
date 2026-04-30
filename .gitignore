@@ -9,3 +9,7 @@ agentwall-approvals.json
 agentwall.config.local.yaml
 agentwall.config.yaml
 policy.yaml
+state/
+.agent.lock
+.codex/
+agentwall.lan.yaml

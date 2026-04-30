@@ -1,4 +1,8 @@
 import { randomUUID } from "crypto";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import * as yaml from "js-yaml";
 import { AgentwallConfig } from "../config";
 import {
   AgentContext,
@@ -6,12 +10,16 @@ import {
   ApprovalResponse,
   AuditEvent,
   ContentClassification,
+  ManifestDrift,
+  ManifestSubjectType,
   NetworkInspection,
   NetworkRequest,
   RiskLevel,
   WatchdogState,
 } from "../types";
 import { HeartbeatWatchdog } from "../watchdog/heartbeat";
+import { buildOrganizationControlPlaneSnapshot } from "../org/control-plane";
+import { detectionForBlockedCategory } from "../policy/detections";
 import { PersistedPendingApproval } from "../approval/store";
 
 type RuntimeEventCategory =
@@ -42,6 +50,7 @@ interface RuntimeEvent {
   sessionId?: string;
   detail?: Record<string, unknown>;
   synthetic?: boolean;
+  operatorInitiated?: boolean;
 }
 
 interface AgentRuntimeActivity {
@@ -51,6 +60,7 @@ interface AgentRuntimeActivity {
   lastAction: string;
   sessionId?: string;
   riskLevel?: RiskLevel;
+  latestChannelId?: string;
 }
 
 interface SessionRuntime {
@@ -66,6 +76,22 @@ interface SessionRuntime {
   pendingApprovals: number;
   evidenceCount: number;
   taskCount: number;
+  channelId?: string;
+  simulated?: boolean;
+  scenarioId?: string;
+}
+
+interface ChannelRuntimeActivity {
+  id: string;
+  agentId: string;
+  channelId: string;
+  lastSeenAt: string;
+  lastPlane: string;
+  lastAction: string;
+  riskLevel: RiskLevel;
+  sessionIds: string[];
+  userIds: string[];
+  roleIds: string[];
 }
 
 interface ApprovalActivity {
@@ -80,8 +106,11 @@ interface ApprovalActivity {
   action: string;
   riskLevel: RiskLevel;
   reasons: string[];
+  matchedRules: string[];
   note?: string;
   approvedBy?: string;
+  simulated?: boolean;
+  scenarioId?: string;
 }
 
 interface OperatorSurfaceItem {
@@ -99,6 +128,9 @@ interface PriorityQueueItem {
   summary: string;
   status: RuntimeEventStatus;
   timestamp: string;
+  drilldownKind?: DrilldownPayload["kind"];
+  drilldownId?: string;
+  primaryAction?: string;
 }
 
 interface RuntimeFlow {
@@ -117,6 +149,8 @@ interface RuntimeFlow {
   decision?: string;
   labels: string[];
   crossesBoundary: boolean;
+  simulated?: boolean;
+  scenarioId?: string;
 }
 
 interface EvidenceRecord {
@@ -133,6 +167,8 @@ interface EvidenceRecord {
   linkedObjectId: string;
   attributes: Record<string, string>;
   relatedTaskIds: string[];
+  simulated?: boolean;
+  scenarioId?: string;
 }
 
 interface TaskNode {
@@ -148,6 +184,8 @@ interface TaskNode {
   createdAt: string;
   updatedAt: string;
   evidenceIds: string[];
+  simulated?: boolean;
+  scenarioId?: string;
 }
 
 interface TaskEdge {
@@ -155,6 +193,152 @@ interface TaskEdge {
   to: string;
   relationship: "precedes" | "evidenced_by";
 }
+
+interface SimulationState {
+  enabled: boolean;
+  scenarioId: string | null;
+  label: string | null;
+  injectedAt: string | null;
+  disclaimer: string;
+}
+
+type KnowledgeBaseCategory = "sources" | "concepts" | "articles" | "open_questions" | "file_structure" | "runtime_context";
+
+interface KnowledgeBaseEntry {
+  id: string;
+  category: KnowledgeBaseCategory;
+  title: string;
+  summary: string;
+  detail: string;
+  tags: string[];
+  chips?: string[];
+  value?: string;
+  excerpt?: string;
+  facts?: Array<{ label: string; value: string }>;
+  location?: string;
+  href?: string;
+  status?: "curated" | "draft" | "open" | "available" | "missing";
+}
+
+interface KnowledgeBaseSection {
+  id: KnowledgeBaseCategory;
+  title: string;
+  description: string;
+  count: number;
+  accent: "accent" | "pending" | "warning";
+}
+
+interface KnowledgeBaseAccess {
+  baseUrl: string;
+  dashboardUrl: string;
+  knowledgeBaseUrl: string;
+  lastVerifiedAt: string;
+  lastVerifiedStatus: "seeded" | "fresh" | "stale";
+}
+
+interface DirectorySummary {
+  relativePath: string;
+  fileCount: number;
+  directoryCount: number;
+  topExtensions: string[];
+  sampleFiles: string[];
+}
+
+const REPO_ROOT = path.resolve(__dirname, "../..");
+const HERMES_HOME = path.resolve(process.env["HERMES_HOME"]?.trim() || path.join(os.homedir(), ".hermes"));
+
+function hermesHomePath(...segments: string[]): string {
+  return path.join(HERMES_HOME, ...segments);
+}
+
+function readTextSafely(absolutePath: string): string {
+  try {
+    return fs.readFileSync(absolutePath, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function safeStat(absolutePath: string): fs.Stats | null {
+  try {
+    return fs.statSync(absolutePath);
+  } catch {
+    return null;
+  }
+}
+
+function countImmediateDirectories(absolutePath: string): number {
+  try {
+    return fs.readdirSync(absolutePath, { withFileTypes: true }).filter((entry) => entry.isDirectory()).length;
+  } catch {
+    return 0;
+  }
+}
+
+function summarizeMarkdownText(text: string): string {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#") && !line.startsWith("```"));
+  const paragraph = lines.find((line) => !line.startsWith("- ") && !line.startsWith("* "));
+  return paragraph ? paragraph.slice(0, 220) : "";
+}
+
+function excerptMarkdownText(text: string, maxLines = 2): string {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("```"))
+    .slice(0, maxLines)
+    .join(" · ");
+}
+
+function probeFirstExistingPath(candidates: string[]): string | null {
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
+}
+
+function nestedStringValue(source: unknown, keys: string[]): string | null {
+  let current: unknown = source;
+  for (const key of keys) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) {
+      return null;
+    }
+    current = (current as Record<string, unknown>)[key];
+  }
+  return typeof current === "string" && current.trim() ? current.trim() : null;
+}
+
+function yamlTopLevelKeys(source: unknown): string[] {
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return [];
+  }
+  return Object.keys(source as Record<string, unknown>);
+}
+
+function summarizeYamlSource(absolutePath: string): { keys: string[]; modelDefault: string | null; modelProvider: string | null; skin: string | null } {
+  const text = readTextSafely(absolutePath);
+  if (!text) {
+    return { keys: [], modelDefault: null, modelProvider: null, skin: null };
+  }
+  const parsed = yaml.load(text);
+  return {
+    keys: yamlTopLevelKeys(parsed),
+    modelDefault: nestedStringValue(parsed, ["model", "default"]),
+    modelProvider: nestedStringValue(parsed, ["model", "provider"]),
+    skin: nestedStringValue(parsed, ["display", "skin"]),
+  };
+}
+
+function formatCountLabel(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+export type SessionControlAction = "pause" | "resume" | "terminate";
+
+export type SessionControlResult =
+  | { ok: true; session: SessionRuntime }
+  | { ok: false; reason: "not_found"; message: string }
+  | { ok: false; reason: "invalid_transition"; message: string; session: SessionRuntime };
 
 interface DrilldownPayload {
   kind: "session" | "approval" | "evidence" | "task" | "agent";
@@ -164,6 +348,16 @@ interface DrilldownPayload {
   summary: string;
   facts: Array<{ label: string; value: string }>;
   timeline: Array<{ timestamp: string; title: string; summary: string; status: string }>;
+  queueNavigation?: {
+    previousRequestId: string | null;
+    previousTarget: string | null;
+    previousDetail: string | null;
+    previousRule: string | null;
+    nextRequestId: string | null;
+    nextTarget: string | null;
+    nextDetail: string | null;
+    nextRule: string | null;
+  };
   related: {
     sessions: SessionRuntime[];
     approvals: ApprovalActivity[];
@@ -192,9 +386,36 @@ function scoreRisk(level: RiskLevel): number {
   }
 }
 
+function prioritizePendingApprovals(items: ApprovalActivity[]): ApprovalActivity[] {
+  return [...items].sort((left, right) => {
+    const riskDelta = scoreRisk(right.riskLevel) - scoreRisk(left.riskLevel);
+    if (riskDelta !== 0) return riskDelta;
+    return left.createdAt.localeCompare(right.createdAt);
+  });
+}
+
+function summarizePendingApprovalNeighbor(item: ApprovalActivity | null, now: Date): string | null {
+  if (!item) return null;
+  return [item.riskLevel, `waiting ${formatAgeShort(item.createdAt, now)}`, item.note ?? item.reasons[0] ?? "Awaiting analyst disposition"]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function toStatus(level: RiskLevel): RuntimeEventStatus {
   if (level === "critical") return "critical";
   if (level === "high") return "warning";
+  return "ok";
+}
+
+function trustStateToRiskLevel(trustState: ManifestDrift["trustState"]): RiskLevel {
+  if (trustState === "untrusted") return "high";
+  if (trustState === "review_required") return "medium";
+  return "low";
+}
+
+function trustStateToEventStatus(trustState: ManifestDrift["trustState"]): RuntimeEventStatus {
+  if (trustState === "untrusted") return "critical";
+  if (trustState === "review_required") return "pending";
   return "ok";
 }
 
@@ -205,6 +426,18 @@ function countBy<T>(items: T[], key: (item: T) => string): Record<string, number
     counts[bucket] = (counts[bucket] ?? 0) + 1;
   }
   return counts;
+}
+
+function formatAgeShort(from: string, now: Date): string {
+  const deltaMs = Math.max(0, now.getTime() - new Date(from).getTime());
+  const totalSeconds = Math.round(deltaMs / 1000);
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes < 60) return seconds === 0 ? `${minutes}m` : `${minutes}m ${seconds}s`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes === 0 ? `${hours}h` : `${hours}h ${remainingMinutes}m`;
 }
 
 function defaultSessionId(agentId: string): string {
@@ -220,6 +453,502 @@ function summarizeTarget(target: unknown): string {
   return "control-plane";
 }
 
+function compareIsoTimestampsDescending(left: string, right: string): number {
+  return right.localeCompare(left);
+}
+
+function trimTrailingSlash(value: string): string {
+  return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+function buildCanonicalBaseUrl(config: AgentwallConfig): string {
+  const configuredBaseUrl = config.dashboard?.publicBaseUrl?.trim();
+  if (configuredBaseUrl) {
+    return trimTrailingSlash(configuredBaseUrl);
+  }
+
+  const canonicalHost = config.host || "127.0.0.1";
+  const canonicalPort = Number.isFinite(config.port) ? config.port : 3000;
+  return `http://${canonicalHost}:${canonicalPort}`;
+}
+
+function repoPath(relativePath: string): string {
+  return path.join(REPO_ROOT, relativePath);
+}
+
+function normalizeRepoRelative(relativePath: string): string {
+  return relativePath.replaceAll(path.sep, "/");
+}
+
+
+function safeReadText(relativePath: string): string {
+  try {
+    return fs.readFileSync(repoPath(relativePath), "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function formatExtension(ext: string): string {
+  return ext === "(none)" ? "no extension" : ext.replace(/^\./, "");
+}
+
+function summarizeMarkdown(relativePath: string, fallback: string): string {
+  if (path.extname(relativePath) !== ".md") {
+    return fallback;
+  }
+  const text = safeReadText(relativePath);
+  if (!text) return fallback;
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#") && !line.startsWith("```"));
+  const paragraph = lines.find((line) => !line.startsWith("- ") && !line.startsWith("* "));
+  return paragraph ? paragraph.slice(0, 220) : fallback;
+}
+
+function summarizeDirectory(relativePath: string): DirectorySummary {
+  const root = repoPath(relativePath);
+  const extensionCounts: Record<string, number> = {};
+  const sampleFiles: string[] = [];
+  let fileCount = 0;
+  let directoryCount = 0;
+  const queue = [root];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+    const dirents = fs
+      .readdirSync(current, { withFileTypes: true })
+      .sort((left, right) => left.name.localeCompare(right.name));
+
+    for (const dirent of dirents) {
+      const absolute = path.join(current, dirent.name);
+      const relative = normalizeRepoRelative(path.relative(REPO_ROOT, absolute));
+      if (dirent.isDirectory()) {
+        directoryCount += 1;
+        queue.push(absolute);
+        continue;
+      }
+      if (!dirent.isFile()) continue;
+      fileCount += 1;
+      const ext = path.extname(dirent.name) || "(none)";
+      extensionCounts[ext] = (extensionCounts[ext] ?? 0) + 1;
+      if (sampleFiles.length < 4) {
+        sampleFiles.push(relative);
+      }
+    }
+  }
+
+  const topExtensions = Object.entries(extensionCounts)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 3)
+    .map(([ext, count]) => `${formatExtension(ext)} ${count}`);
+
+  return {
+    relativePath,
+    fileCount,
+    directoryCount,
+    topExtensions,
+    sampleFiles,
+  };
+}
+
+function buildFileSummaryEntry(relativePath: string, title: string, tags: string[]): KnowledgeBaseEntry {
+  const summary = summarizeDirectory(relativePath);
+  return {
+    id: `structure-${relativePath.replace(/[/.]+/g, "-")}`,
+    category: "file_structure",
+    title,
+    summary: `${summary.relativePath} contains ${summary.fileCount} file(s) across ${summary.directoryCount} nested director${summary.directoryCount === 1 ? "y" : "ies"}.`,
+    detail: `Top file types: ${summary.topExtensions.join(", ") || "none"}. Sample paths: ${summary.sampleFiles.join(", ") || "none"}.`,
+    tags,
+    chips: [...summary.topExtensions],
+    location: relativePath,
+    status: "curated",
+  };
+}
+
+function buildSourceEntry(
+  id: string,
+  title: string,
+  relativePath: string,
+  fallbackSummary: string,
+  detail: string,
+  tags: string[],
+  href?: string
+): KnowledgeBaseEntry {
+  return {
+    id,
+    category: "sources",
+    title,
+    summary: summarizeMarkdown(relativePath, fallbackSummary),
+    detail,
+    tags,
+    location: relativePath,
+    href,
+    status: "curated",
+  };
+}
+
+function buildDocEntry(
+  category: Exclude<KnowledgeBaseCategory, "sources" | "file_structure" | "runtime_context">,
+  id: string,
+  title: string,
+  relativePath: string,
+  fallbackSummary: string,
+  detail: string,
+  tags: string[],
+  status: KnowledgeBaseEntry["status"]
+): KnowledgeBaseEntry {
+  return {
+    id,
+    category,
+    title,
+    summary: summarizeMarkdown(relativePath, fallbackSummary),
+    detail,
+    tags,
+    location: relativePath,
+    status,
+  };
+}
+
+function buildHermesRuntimeContextEntries(config: AgentwallConfig, baseUrl: string): KnowledgeBaseEntry[] {
+  const soulPath = hermesHomePath("SOUL.md");
+  const memoryCandidates = [
+    hermesHomePath("memory.md"),
+    hermesHomePath("memory", "README.md"),
+    hermesHomePath("memory.json"),
+    hermesHomePath("memory.sqlite"),
+  ];
+  const userCandidates = [
+    hermesHomePath("user.md"),
+    hermesHomePath("user", "README.md"),
+    hermesHomePath("profile.md"),
+    hermesHomePath("profiles"),
+  ];
+  const configPath = hermesHomePath("config.yaml");
+  const envPath = hermesHomePath(".env");
+  const skillsPath = hermesHomePath("skills");
+  const profilesPath = hermesHomePath("profiles");
+
+  const configSnapshot = summarizeYamlSource(configPath);
+  const configPresent = Boolean(readTextSafely(configPath));
+  const envPresent = Boolean(readTextSafely(envPath));
+  const skillsPresent = fs.existsSync(skillsPath);
+  const profilesPresent = fs.existsSync(profilesPath);
+  const skillCollections = countImmediateDirectories(skillsPath);
+  const profileCollections = countImmediateDirectories(profilesPath);
+  const soulPresent = Boolean(readTextSafely(soulPath));
+  const soulText = readTextSafely(soulPath);
+  const soulSummary = soulText ? summarizeMarkdownText(soulText) : "";
+  const memoryPath = probeFirstExistingPath(memoryCandidates);
+  const userPath = probeFirstExistingPath(userCandidates);
+  const hermesHome = HERMES_HOME;
+  const cwd = path.resolve(process.cwd());
+
+  const soulStat = safeStat(soulPath);
+  const configStat = safeStat(configPath);
+  const envStat = safeStat(envPath);
+
+  return [
+    {
+      id: "soul",
+      category: "runtime_context",
+      title: "Soul",
+      summary: soulPresent
+        ? soulSummary || "Hermes voice and behavior contract loaded from the repository-local soul file."
+        : "No Hermes soul file was found in the expected home path.",
+      detail: soulPresent
+        ? `Loaded from ${soulPath}. The file is explicit about voice, pacing, and response constraints. No synthetic summary is added here beyond the actual text.`
+        : `Probed ${soulPath}, ${memoryCandidates.join(", ")}, and ${userCandidates.join(", ")}.`,
+      value: soulPresent ? soulPath : "missing/not configured",
+      excerpt: soulPresent ? excerptMarkdownText(soulText, 2) : undefined,
+      facts: soulPresent
+        ? [
+            { label: "Path", value: soulPath },
+            { label: "Size", value: soulStat ? `${soulStat.size} bytes` : "unknown" },
+            { label: "Lines", value: soulText.split(/\r?\n/).length.toString() },
+          ]
+        : [{ label: "Probe result", value: "missing/not configured" }],
+      tags: ["runtime-context", "soul", "hermes"],
+      chips: [soulPresent ? "configured" : "missing/not configured", "voice contract"],
+      location: soulPath,
+      status: soulPresent ? "available" : "missing",
+    },
+    {
+      id: "memory",
+      category: "runtime_context",
+      title: "Memory",
+      summary: memoryPath ? `Memory context found at ${memoryPath}.` : "No repository-local or Hermes-home memory file was found.",
+      detail: memoryPath
+        ? `Memory is backed by an actual file or directory at ${memoryPath}. The KB surfaces the path only until a real memory store is wired.`
+        : `Probed ${memoryCandidates.join(", ")} and did not find a memory store. The KB intentionally reports that absence instead of inventing one.`,
+      value: memoryPath || "missing/not configured",
+      excerpt: memoryPath ? `Path: ${memoryPath}` : undefined,
+      facts: memoryPath
+        ? [{ label: "Path", value: memoryPath }]
+        : [
+            { label: "Probe result", value: "missing/not configured" },
+            { label: "Expected at", value: memoryCandidates.join(" · ") },
+          ],
+      tags: ["runtime-context", "memory", "state"],
+      chips: [memoryPath ? "configured" : "missing/not configured", "retrieval"],
+      location: memoryPath || memoryCandidates[0],
+      status: memoryPath ? "available" : "missing",
+    },
+    {
+      id: "user_profile",
+      category: "runtime_context",
+      title: "User / Profile",
+      summary: userPath ? `User/profile context found at ${userPath}.` : "No repository-local user/profile file was found.",
+      detail: userPath
+        ? `This surface is backed by the actual file or directory at ${userPath}.`
+        : `Probed ${userCandidates.join(", ")} and did not find a user/profile file or directory.`,
+      value: userPath || "missing/not configured",
+      excerpt: userPath ? `Path: ${userPath}` : undefined,
+      facts: userPath
+        ? [{ label: "Path", value: userPath }]
+        : [
+            { label: "Probe result", value: "missing/not configured" },
+            { label: "Expected at", value: userCandidates.join(" · ") },
+          ],
+      tags: ["runtime-context", "user", "profile"],
+      chips: [userPath ? "configured" : "missing/not configured", "identity"],
+      location: userPath || userCandidates[0],
+      status: userPath ? "available" : "missing",
+    },
+    {
+      id: "system_environment",
+      category: "runtime_context",
+      title: "System / Environment",
+      summary: `Hermes home at ${hermesHome}; config ${configPresent ? "present" : "missing"}; skills ${skillsPresent ? "present" : "missing"}.`,
+      detail: `Live process context comes from the actual Hermes home and runtime config on this machine. No placeholder values are invented here. Base URL ${baseUrl}.`,
+      value: `${config.host}:${config.port}`,
+      excerpt: `Base URL: ${baseUrl} · Hermes home: ${hermesHome} · Config keys: ${configSnapshot.keys.length ? configSnapshot.keys.join(", ") : "none"}`,
+      facts: [
+        { label: "Hermes home", value: hermesHome },
+        { label: "Config file", value: configPresent ? configPath : "missing/not configured" },
+        { label: "Config size", value: configStat ? `${configStat.size} bytes` : "unknown" },
+        { label: "Config keys", value: configSnapshot.keys.length ? configSnapshot.keys.join(", ") : "none" },
+        { label: "Model", value: configSnapshot.modelDefault || "unknown" },
+        { label: "Provider", value: configSnapshot.modelProvider || "unknown" },
+        { label: "Display skin", value: configSnapshot.skin || "unknown" },
+        { label: "Skills collections", value: formatCountLabel(skillCollections, "collection") },
+        { label: "Profiles", value: profilesPresent ? formatCountLabel(profileCollections, "profile") : "missing/not configured" },
+        { label: ".env", value: envPresent ? envPath : "missing/not configured" },
+        { label: ".env size", value: envStat ? `${envStat.size} bytes` : "unknown" },
+        { label: "CWD", value: cwd },
+        { label: "Base URL", value: baseUrl },
+        { label: "Approval mode", value: config.approval.mode },
+        { label: "Watchdog", value: config.watchdog.enabled ? "enabled" : "disabled" },
+      ],
+      tags: ["runtime", "environment", "config", "dashboard"],
+      chips: [config.approval.mode, config.watchdog.enabled ? "watchdog on" : "watchdog off", skillsPresent ? "skills present" : "skills missing"],
+      location: "~/.hermes/config.yaml",
+      status: "available",
+    },
+  ];
+}
+
+function buildKnowledgeBaseEntries(config: AgentwallConfig, baseUrl: string): KnowledgeBaseEntry[] {
+  return [
+    buildSourceEntry(
+      "source-dashboard-state",
+      "Dashboard state API",
+      "src/routes/dashboard.ts",
+      "Primary Mission Control state surface for the operator console and knowledge base.",
+      "Use the live dashboard payload as the canonical source for posture, approvals, sessions, evidence, canonical access, and knowledge-base state.",
+      ["api", "state", "dashboard", "mission-control"],
+      "/api/dashboard/state"
+    ),
+    buildSourceEntry(
+      "source-runtime-state",
+      "Runtime state aggregator",
+      "src/dashboard/state.ts",
+      "Collects approvals, audit evidence, sessions, task graph, and operator-facing summaries.",
+      "This file now also generates repository-aware knowledge-base entries and transparent runtime-context probes.",
+      ["runtime", "aggregation", "evidence", "approvals"]
+    ),
+    buildSourceEntry(
+      "source-ui-shell",
+      "Dashboard shell routes",
+      "src/routes/ui.ts",
+      "Serves the static dashboard shell for the dashboard and knowledge-base views.",
+      "Keep KB routing inside the existing Fastify + static frontend surface so operators stay in one shell.",
+      ["fastify", "ui", "routes", "shell"]
+    ),
+    buildSourceEntry(
+      "source-docs-index",
+      "Docs index",
+      "docs/README.md",
+      "Narrative entry point for architecture, runtime, research, and workstream documents.",
+      "Use the docs index when the dashboard summary is not enough and the operator needs the repo’s longer-form references.",
+      ["docs", "index", "reference"]
+    ),
+    buildSourceEntry(
+      "source-config-public-base",
+      "Canonical public base config",
+      "src/config.ts",
+      "Config schema for Agentwall, including the optional dashboard.publicBaseUrl override.",
+      `Canonical access links use dashboard.publicBaseUrl when configured, otherwise they safely fall back to ${baseUrl}.`,
+      ["config", "publicBaseUrl", "canonical-access", "dashboard"]
+    ),
+    buildDocEntry(
+      "concepts",
+      "concept-control-plane",
+      "Control-plane-first operator model",
+      "README.md",
+      "Mission Control is the place to inspect, gate, and contain agent work.",
+      "The KB stays aligned with the repository’s core operating model: inspect intent, route risky work into approvals, and preserve evidence.",
+      ["operator", "control-plane", "containment"],
+      "curated"
+    ),
+    buildDocEntry(
+      "concepts",
+      "concept-threat-model",
+      "Threat model assumptions",
+      "docs/threat-model.md",
+      "Threat boundaries define how Agentwall treats tools, browser actions, egress, and insider-style abuse.",
+      "Use this to anchor KB interpretation around what the product is explicitly defending against.",
+      ["threat-model", "risk", "security"],
+      "curated"
+    ),
+    buildDocEntry(
+      "concepts",
+      "concept-product-thesis",
+      "Product thesis",
+      "docs/product-thesis.md",
+      "Why the product exists and which operators it is for.",
+      "The thesis document gives the operator-critical framing behind the dashboard and KB surfaces.",
+      ["product", "thesis", "operator"],
+      "curated"
+    ),
+    buildDocEntry(
+      "articles",
+      "article-architecture",
+      "Architecture overview",
+      "docs/architecture.md",
+      "Maps the runtime, routes, policy engine, and dashboard layers.",
+      "Best starting point for engineers changing Mission Control surfaces or adding new evidence/state blocks.",
+      ["architecture", "routes", "runtime"],
+      "curated"
+    ),
+    buildDocEntry(
+      "articles",
+      "article-install",
+      "Install guide",
+      "docs/install.md",
+      "Step-by-step install and bootstrap reference.",
+      "Operators can use this when validating a fresh deployment or reconstructing expected startup state.",
+      ["install", "setup", "operations"],
+      "curated"
+    ),
+    buildDocEntry(
+      "articles",
+      "article-floodguard",
+      "Runtime FloodGuard guide",
+      "docs/runtime-floodguard.md",
+      "Explains live pressure management, shield mode, and operator guidance surfaces.",
+      "Pairs closely with dashboard behavior because queue pressure and containment guidance are rendered from runtime state.",
+      ["floodguard", "operations", "controls"],
+      "curated"
+    ),
+    buildDocEntry(
+      "articles",
+      "article-roadmap",
+      "Roadmap",
+      "docs/roadmap.md",
+      "Forward-looking product and implementation direction.",
+      "Useful when a KB gap appears and you need to decide whether it is deliberate scope or unfinished work.",
+      ["roadmap", "planning", "future"],
+      "draft"
+    ),
+    buildDocEntry(
+      "open_questions",
+      "question-research-backlog",
+      "Research backlog",
+      "docs/research-backlog.md",
+      "Tracked research questions and unresolved investigation areas.",
+      "Treat this as the explicit backlog of open issues that the current KB should surface rather than smooth over.",
+      ["research", "backlog", "open"],
+      "open"
+    ),
+    buildDocEntry(
+      "open_questions",
+      "question-community-issues",
+      "Community issues seed",
+      "docs/community-issues-seed.md",
+      "Collected issue themes and unresolved external-facing concerns.",
+      "These are intentionally open and should stay visible to operators and maintainers.",
+      ["community", "issues", "open"],
+      "open"
+    ),
+    buildDocEntry(
+      "open_questions",
+      "question-roadmap-frontiers",
+      "Roadmap frontiers",
+      "docs/roadmap.md",
+      "The roadmap itself still encodes unanswered scope and sequencing decisions.",
+      "Use this as a reminder that some KB domains are incomplete by design because the repo still documents them as open.",
+      ["roadmap", "scope", "sequencing"],
+      "open"
+    ),
+    buildFileSummaryEntry("docs", "docs/ path summary", ["docs", "repository", "reference"]),
+    buildFileSummaryEntry("src", "src/ path summary", ["src", "runtime", "routes"]),
+    buildFileSummaryEntry("public", "public/ path summary", ["public", "frontend", "shell"]),
+    buildFileSummaryEntry("tests", "tests/ path summary", ["tests", "coverage", "regression"]),
+    ...buildHermesRuntimeContextEntries(config, baseUrl),
+  ];
+}
+
+function buildKnowledgeBaseSections(entries: KnowledgeBaseEntry[]): KnowledgeBaseSection[] {
+  return [
+    {
+      id: "sources",
+      title: "Sources",
+      description: "Canonical APIs, runtime aggregators, and docs entry points.",
+      count: entries.filter((entry) => entry.category === "sources").length,
+      accent: "accent",
+    },
+    {
+      id: "concepts",
+      title: "Concepts",
+      description: "Operating-model ideas that explain how Mission Control is supposed to work.",
+      count: entries.filter((entry) => entry.category === "concepts").length,
+      accent: "accent",
+    },
+    {
+      id: "articles",
+      title: "Articles",
+      description: "Longer-form docs for architecture, runtime operations, and current planning.",
+      count: entries.filter((entry) => entry.category === "articles").length,
+      accent: "pending",
+    },
+    {
+      id: "open_questions",
+      title: "Open Questions",
+      description: "Unresolved product and operating questions that still need decisions.",
+      count: entries.filter((entry) => entry.category === "open_questions").length,
+      accent: "warning",
+    },
+    {
+      id: "file_structure",
+      title: "File Structure",
+      description: "Where the Mission Control code lives in this repository.",
+      count: entries.filter((entry) => entry.category === "file_structure").length,
+      accent: "pending",
+    },
+    {
+      id: "runtime_context",
+      title: "Runtime Context",
+      description: "Transparent probes for Soul, Memory, User/Profile, and live system/environment context.",
+      count: entries.filter((entry) => entry.category === "runtime_context").length,
+      accent: "warning",
+    },
+  ];
+}
+
 export class RuntimeState {
   private readonly startedAt = new Date();
   private readonly config: AgentwallConfig;
@@ -228,7 +957,9 @@ export class RuntimeState {
   private readonly auditEvents: AuditEvent[] = [];
   private readonly approvals: ApprovalActivity[] = [];
   private readonly agentActivity = new Map<string, AgentRuntimeActivity>();
+  private readonly channelActivity = new Map<string, ChannelRuntimeActivity>();
   private readonly sessions = new Map<string, SessionRuntime>();
+  private readonly sessionRecency = new Map<string, number>();
   private readonly runtimeFlows: RuntimeFlow[] = [];
   private readonly evidence: EvidenceRecord[] = [];
   private readonly tasks = new Map<string, TaskNode>();
@@ -236,6 +967,14 @@ export class RuntimeState {
   private readonly lastTaskForSession = new Map<string, string>();
   private approvalMode: AgentwallConfig["approval"]["mode"];
   private totalRequests = 0;
+  private sessionRecencyCounter = 0;
+  private simulation: SimulationState = {
+    enabled: false,
+    scenarioId: null,
+    label: null,
+    injectedAt: null,
+    disclaimer: "Synthetic incident data only. No real runtime action is executed.",
+  };
 
   constructor(config: AgentwallConfig) {
     this.config = config;
@@ -248,10 +987,22 @@ export class RuntimeState {
     this.auditEvents.unshift(event);
     this.totalRequests += 1;
     const sessionId = event.sessionId ?? defaultSessionId(event.agentId);
-    this.observeAgent(event.agentId, event.plane, event.action, event.timestamp, sessionId, event.riskLevel);
+    this.observeAgent(event.agentId, event.plane, event.action, event.timestamp, sessionId, event.riskLevel, event.actor?.channelId);
     this.observeSession({
       sessionId,
       agentId: event.agentId,
+      plane: event.plane,
+      action: event.action,
+      timestamp: event.timestamp,
+      riskLevel: event.riskLevel,
+      channelId: event.actor?.channelId,
+    });
+    this.observeChannel({
+      agentId: event.agentId,
+      sessionId,
+      channelId: event.actor?.channelId,
+      userId: event.actor?.userId,
+      roleIds: event.actor?.roleIds,
       plane: event.plane,
       action: event.action,
       timestamp: event.timestamp,
@@ -283,6 +1034,10 @@ export class RuntimeState {
         decision: event.decision,
         rules: String(event.matchedRules.length),
         approval: event.requiresApproval ? "required" : "not_required",
+        integrityChainIndex: String(event.integrity.chainIndex),
+        integrityHash: event.integrity.hash,
+        integrityPreviousHash: event.integrity.previousHash ?? "null",
+        integrityStatus: event.integrity.status,
       },
       relatedTaskIds: [task.id],
     });
@@ -342,6 +1097,7 @@ export class RuntimeState {
       action: request.context.action,
       riskLevel: request.policyResult.riskLevel,
       reasons: request.policyResult.reasons,
+      matchedRules: request.policyResult.matchedRules,
     };
 
     if (mode === "auto") {
@@ -351,10 +1107,30 @@ export class RuntimeState {
     }
 
     this.approvals.unshift(activity);
-    this.observeAgent(request.context.agentId, request.context.plane, request.context.action, createdAt, sessionId, request.policyResult.riskLevel);
+    this.observeAgent(
+      request.context.agentId,
+      request.context.plane,
+      request.context.action,
+      createdAt,
+      sessionId,
+      request.policyResult.riskLevel,
+      request.context.actor?.channelId
+    );
     this.observeSession({
       sessionId,
       agentId: request.context.agentId,
+      plane: request.context.plane,
+      action: request.context.action,
+      timestamp: createdAt,
+      riskLevel: request.policyResult.riskLevel,
+      channelId: request.context.actor?.channelId,
+    });
+    this.observeChannel({
+      agentId: request.context.agentId,
+      sessionId,
+      channelId: request.context.actor?.channelId,
+      userId: request.context.actor?.userId,
+      roleIds: request.context.actor?.roleIds,
       plane: request.context.plane,
       action: request.context.action,
       timestamp: createdAt,
@@ -445,6 +1221,7 @@ export class RuntimeState {
         action: entry.request.context.action,
         riskLevel: entry.request.policyResult.riskLevel,
         reasons: entry.request.policyResult.reasons,
+        matchedRules: entry.request.policyResult.matchedRules,
       });
       this.observeAgent(
         entry.request.context.agentId,
@@ -485,6 +1262,7 @@ export class RuntimeState {
             action: request.context.action,
             riskLevel: request.policyResult.riskLevel,
             reasons: request.policyResult.reasons,
+            matchedRules: request.policyResult.matchedRules,
           }
         : undefined
     );
@@ -602,6 +1380,8 @@ export class RuntimeState {
       attributes: {
         reason: result.reason,
         category: result.blockedCategory ?? "none",
+        detectionId: detectionForBlockedCategory(result.blockedCategory)?.id ?? "none",
+        detectionName: detectionForBlockedCategory(result.blockedCategory)?.name ?? "none",
       },
       relatedTaskIds: [task.id],
     });
@@ -637,6 +1417,8 @@ export class RuntimeState {
         method: request.method ?? "GET",
         reason: result.reason,
         blockedCategory: result.blockedCategory,
+        detectionId: detectionForBlockedCategory(result.blockedCategory)?.id ?? "none",
+        detectionName: detectionForBlockedCategory(result.blockedCategory)?.name ?? "none",
         ssrf: result.ssrf,
         privateRange: result.privateRange,
         taskId: task.id,
@@ -725,6 +1507,102 @@ export class RuntimeState {
     });
   }
 
+  recordManifestInspection(
+    inspection: { subjectId: string; subjectType: ManifestSubjectType },
+    result: ManifestDrift
+  ): void {
+    const timestamp = new Date().toISOString();
+    const sessionId = `inspection:manifest:${inspection.subjectType}:${inspection.subjectId}`;
+    const agentId = "manifest-probe";
+    const riskLevel = trustStateToRiskLevel(result.trustState);
+    const eventStatus = trustStateToEventStatus(result.trustState);
+    this.observeSession({
+      sessionId,
+      agentId,
+      plane: "governance",
+      action: "inspect_manifest",
+      timestamp,
+      riskLevel,
+    });
+    const task = this.upsertTask({
+      sessionId,
+      agentId,
+      plane: "governance",
+      action: "inspect_manifest",
+      timestamp,
+      riskLevel,
+      status: result.trustState === "untrusted" ? "blocked" : result.trustState === "review_required" ? "active" : "completed",
+      summary: result.reason,
+    });
+    const evidence = this.addEvidence({
+      kind: "inspection",
+      title: "Manifest trust inspection",
+      summary: `${inspection.subjectType} ${inspection.subjectId} · ${result.trustState}`,
+      timestamp,
+      riskLevel,
+      status: eventStatus,
+      agentId,
+      sessionId,
+      plane: "governance",
+      linkedObjectId: `${inspection.subjectType}:${inspection.subjectId}`,
+      attributes: {
+        subjectId: inspection.subjectId,
+        subjectType: inspection.subjectType,
+        manifestStatus: result.status,
+        trustState: result.trustState,
+        attestationStatus: result.attestation.status,
+        currentHash: result.currentFingerprint.hash,
+        approvedHash: result.approvedFingerprint?.hash ?? "none",
+      },
+      relatedTaskIds: [task.id],
+    });
+    this.linkEvidenceToTask(task.id, evidence.id);
+    this.recordFlow({
+      timestamp,
+      flowType: "inspection",
+      status: result.trustState === "untrusted" ? "blocked" : result.trustState === "review_required" ? "waiting" : "completed",
+      agentId,
+      sessionId,
+      plane: "governance",
+      action: "inspect_manifest",
+      direction: "internal",
+      target: `${inspection.subjectType}:${inspection.subjectId}`,
+      summary: result.reason,
+      riskLevel,
+      decision: result.trustState === "untrusted" ? "deny" : result.trustState === "review_required" ? "approve" : "allow",
+      labels: [
+        `manifest:${result.status}`,
+        `trust:${result.trustState}`,
+        `attestation:${result.attestation.status}`,
+      ],
+      crossesBoundary: false,
+    });
+    this.pushEvent({
+      id: randomUUID(),
+      timestamp,
+      category: "audit",
+      title: "Manifest trust inspection",
+      summary: `${inspection.subjectId} · ${result.trustState}`,
+      status: eventStatus,
+      riskLevel,
+      plane: "governance",
+      agentId,
+      sessionId,
+      operatorInitiated: true,
+      detail: {
+        subjectId: inspection.subjectId,
+        subjectType: inspection.subjectType,
+        manifestStatus: result.status,
+        trustState: result.trustState,
+        attestationStatus: result.attestation.status,
+        currentHash: result.currentFingerprint.hash,
+        approvedHash: result.approvedFingerprint?.hash ?? null,
+        taskId: task.id,
+        evidenceId: evidence.id,
+      },
+    });
+  }
+
   updateApprovalMode(mode: AgentwallConfig["approval"]["mode"]): void {
     if (this.approvalMode === mode) return;
     this.approvalMode = mode;
@@ -736,6 +1614,7 @@ export class RuntimeState {
       summary: `Approval mode now ${mode}`,
       status: mode === "always" ? "pending" : "ok",
       detail: { mode },
+      operatorInitiated: true,
     });
   }
 
@@ -748,13 +1627,195 @@ export class RuntimeState {
     return this.sessions.get(sessionId);
   }
 
-  controlSession(sessionId: string, action: "pause" | "resume" | "terminate", note?: string): SessionRuntime | undefined {
+  activateIncidentSimulation(): { ok: true; simulation: SimulationState } {
+    this.clearSyntheticRecords();
+    const now = Date.now();
+    const scenarioId = "incident-chain-ransomware";
+    const sessionId = `sim:${scenarioId}:session-17`;
+    const timeline = [
+      { offsetMs: 7 * 60_000, plane: "identity", action: "oauth_token_exchange", title: "Token replay detected", summary: "Untrusted browser token exchanged for privileged API access", risk: "high" as RiskLevel, status: "warning" as RuntimeEventStatus, decision: "allow" },
+      { offsetMs: 6 * 60_000, plane: "network", action: "http_request", title: "Outbound C2 beacon blocked", summary: "Attempted egress to suspicious host matched deny list", risk: "critical" as RiskLevel, status: "critical" as RuntimeEventStatus, decision: "deny" },
+      { offsetMs: 5 * 60_000, plane: "tool", action: "bash_exec", title: "Privilege escalation command queued", summary: "High-risk shell chain routed to manual approval", risk: "critical" as RiskLevel, status: "pending" as RuntimeEventStatus, decision: "pending" },
+      { offsetMs: 4 * 60_000, plane: "content", action: "archive_export", title: "DLP secret match", summary: "Export payload contains simulated API key material", risk: "high" as RiskLevel, status: "warning" as RuntimeEventStatus, decision: "redact" },
+      { offsetMs: 2 * 60_000, plane: "governance", action: "session_pause", title: "Containment playbook executed", summary: "Simulation paused high-risk session for triage", risk: "high" as RiskLevel, status: "warning" as RuntimeEventStatus, decision: "pause" },
+    ];
+
+    for (const step of timeline) {
+      const timestamp = new Date(now - step.offsetMs).toISOString();
+      this.observeAgent("sim-operator", step.plane, step.action, timestamp, sessionId, step.risk);
+      this.observeSession({
+        sessionId,
+        agentId: "sim-operator",
+        plane: step.plane,
+        action: step.action,
+        timestamp,
+        riskLevel: step.risk,
+        simulated: true,
+        scenarioId,
+      });
+      const task = this.upsertTask({
+        sessionId,
+        agentId: "sim-operator",
+        plane: step.plane,
+        action: step.action,
+        timestamp,
+        riskLevel: step.risk,
+        status: step.status === "pending" ? "active" : step.status === "critical" ? "blocked" : "completed",
+        summary: step.summary,
+        simulated: true,
+        scenarioId,
+      });
+      const evidence = this.addEvidence({
+        timestamp,
+        kind: step.plane === "tool" ? "approval" : step.plane === "network" ? "inspection" : "provenance",
+        title: step.title,
+        summary: step.summary,
+        riskLevel: step.risk,
+        status: step.status,
+        agentId: "sim-operator",
+        sessionId,
+        plane: step.plane,
+        linkedObjectId: `sim:${scenarioId}:${step.action}`,
+        attributes: {
+          decision: step.decision,
+          source: "simulation",
+        },
+        relatedTaskIds: [task.id],
+        simulated: true,
+        scenarioId,
+      });
+      this.linkEvidenceToTask(task.id, evidence.id);
+      this.recordFlow({
+        timestamp,
+        flowType: step.plane === "tool" ? "approval" : "policy",
+        status: step.status === "pending" ? "waiting" : step.status === "critical" ? "blocked" : "completed",
+        agentId: "sim-operator",
+        sessionId,
+        plane: step.plane,
+        action: step.action,
+        direction: step.plane === "network" ? "egress" : "internal",
+        target: step.plane === "network" ? "https://cdn-sync-verifier.co/update" : "incident-simulation",
+        summary: step.summary,
+        riskLevel: step.risk,
+        decision: step.decision,
+        labels: ["simulation", "demo"],
+        crossesBoundary: step.plane === "network" || step.plane === "identity",
+        simulated: true,
+        scenarioId,
+      });
+      this.pushEvent({
+        id: randomUUID(),
+        timestamp,
+        category: step.plane === "network" ? "network" : step.plane === "tool" ? "approval" : "policy",
+        title: step.title,
+        summary: step.summary,
+        status: step.status,
+        riskLevel: step.risk,
+        plane: step.plane,
+        agentId: "sim-operator",
+        sessionId,
+        synthetic: true,
+        detail: {
+          taskId: task.id,
+          evidenceId: evidence.id,
+          scenarioId,
+        },
+      });
+    }
+
+    const createdAt = new Date(now - 5 * 60_000).toISOString();
+    this.approvals.unshift({
+      requestId: `sim:${scenarioId}:approval-1`,
+      createdAt,
+      status: "pending",
+      mode: "manual",
+      agentId: "sim-operator",
+      sessionId,
+      plane: "tool",
+      action: "bash_exec",
+      riskLevel: "critical",
+      reasons: ["Simulated destructive shell chain requires human approval"],
+      matchedRules: ["sim:require-approval-shell"],
+      note: "Simulation artifact",
+      simulated: true,
+      scenarioId,
+    });
+    this.updateSessionApprovalCount(sessionId);
+    const simSession = this.sessions.get(sessionId);
+    if (simSession) {
+      simSession.note = "Synthetic incident chain for demo mode";
+      simSession.status = "paused";
+      simSession.simulated = true;
+      simSession.scenarioId = scenarioId;
+    }
+
+    this.simulation = {
+      enabled: true,
+      scenarioId,
+      label: "Incident chain: token replay -> C2 beacon -> shell escalation",
+      injectedAt: new Date(now).toISOString(),
+      disclaimer: "Synthetic incident data only. No real runtime action is executed.",
+    };
+
+    return { ok: true, simulation: this.simulation };
+  }
+
+  clearSimulation(): { ok: true; simulation: SimulationState } {
+    this.clearSyntheticRecords();
+    this.simulation = {
+      enabled: false,
+      scenarioId: null,
+      label: null,
+      injectedAt: null,
+      disclaimer: "Synthetic incident data only. No real runtime action is executed.",
+    };
+    return { ok: true, simulation: this.simulation };
+  }
+
+  private clearSyntheticRecords(): void {
+    this.events.splice(0, this.events.length, ...this.events.filter((item) => !item.synthetic));
+    this.approvals.splice(0, this.approvals.length, ...this.approvals.filter((item) => !item.simulated));
+    this.runtimeFlows.splice(0, this.runtimeFlows.length, ...this.runtimeFlows.filter((item) => !item.simulated));
+    this.evidence.splice(0, this.evidence.length, ...this.evidence.filter((item) => !item.simulated));
+    for (const [id, task] of this.tasks.entries()) {
+      if (task.simulated) this.tasks.delete(id);
+    }
+    for (const [sessionId, taskId] of this.lastTaskForSession.entries()) {
+      if (!this.tasks.has(taskId) || this.sessions.get(sessionId)?.simulated) {
+        this.lastTaskForSession.delete(sessionId);
+      }
+    }
+    this.taskEdges.splice(0, this.taskEdges.length, ...this.taskEdges.filter((edge) => this.tasks.has(edge.from) && this.tasks.has(edge.to)));
+    for (const [id, session] of this.sessions.entries()) {
+      if (session.simulated) this.sessions.delete(id);
+    }
+    for (const [agentId, activity] of this.agentActivity.entries()) {
+      if (activity.agentId === "sim-operator" || (activity.sessionId && this.sessions.get(activity.sessionId)?.simulated)) {
+        this.agentActivity.delete(agentId);
+      }
+    }
+  }
+
+
+  controlSession(sessionId: string, action: SessionControlAction, note?: string): SessionControlResult {
     const session = this.sessions.get(sessionId);
-    if (!session) return undefined;
+    if (!session) {
+      return { ok: false, reason: "not_found", message: "Session not found" };
+    }
+
+    if ((action === "resume" || action === "pause") && session.status === "terminated") {
+      return {
+        ok: false,
+        reason: "invalid_transition",
+        message: `Session ${session.sessionId} is terminated and cannot be ${action}d. Start a new runtime session instead.`,
+        session: { ...session },
+      };
+    }
 
     session.status = action === "pause" ? "paused" : action === "resume" ? "active" : "terminated";
     session.note = note;
     session.lastSeenAt = new Date().toISOString();
+    this.sessionRecency.set(session.sessionId, ++this.sessionRecencyCounter);
     const riskLevel = session.status === "terminated" ? "high" : session.riskLevel;
     const task = this.upsertTask({
       sessionId: session.sessionId,
@@ -815,9 +1876,10 @@ export class RuntimeState {
         taskId: task.id,
         evidenceId: evidence.id,
       },
+      operatorInitiated: true,
     });
 
-    return { ...session };
+    return { ok: true, session: { ...session } };
   }
 
   recordSessionRejection(context: AgentContext, reason: string): void {
@@ -827,6 +1889,18 @@ export class RuntimeState {
     this.observeSession({
       sessionId,
       agentId: context.agentId,
+      plane: context.plane,
+      action: context.action,
+      timestamp,
+      riskLevel: "high",
+      channelId: context.actor?.channelId,
+    });
+    this.observeChannel({
+      agentId: context.agentId,
+      sessionId,
+      channelId: context.actor?.channelId,
+      userId: context.actor?.userId,
+      roleIds: context.actor?.roleIds,
       plane: context.plane,
       action: context.action,
       timestamp,
@@ -895,14 +1969,49 @@ export class RuntimeState {
 
   getSnapshot(ruleCount: number) {
     const now = new Date();
+    const baseUrl = buildCanonicalBaseUrl(this.config);
     const uptimeMs = now.getTime() - this.startedAt.getTime();
     const recentEvents = this.events.slice(0, 40);
     const recentAudits = this.auditEvents.slice(0, 12);
     const recentApprovals = this.approvals.slice(0, 12);
     const pendingApprovals = this.approvals.filter((item) => item.status === "pending");
-    const recentSessions = Array.from(this.sessions.values())
-      .sort((left, right) => right.lastSeenAt.localeCompare(left.lastSeenAt))
-      .slice(0, 12);
+    const prioritizedPendingApprovals = prioritizePendingApprovals(pendingApprovals);
+    const oldestPendingApproval = pendingApprovals.reduce<ApprovalActivity | null>((oldest, item) => {
+      if (!oldest) return item;
+      return item.createdAt.localeCompare(oldest.createdAt) < 0 ? item : oldest;
+    }, null);
+    const allSessions = Array.from(this.sessions.values())
+      .sort((left, right) => {
+        const timestampDelta = compareIsoTimestampsDescending(left.lastSeenAt, right.lastSeenAt);
+        if (timestampDelta !== 0) return timestampDelta;
+        return (this.sessionRecency.get(right.sessionId) ?? 0) - (this.sessionRecency.get(left.sessionId) ?? 0);
+      });
+    const recentSessions = allSessions.slice(0, 12);
+    const channelInventory = Array.from(this.channelActivity.values())
+      .sort((left, right) => right.lastSeenAt.localeCompare(left.lastSeenAt) || left.channelId.localeCompare(right.channelId));
+    const channelInventoryByAgent = Array.from(
+      channelInventory.reduce((map, item) => {
+        const existing = map.get(item.agentId) ?? [];
+        existing.push(item);
+        map.set(item.agentId, existing);
+        return map;
+      }, new Map<string, ChannelRuntimeActivity[]>())
+    )
+      .map(([agentId, channels]) => ({ agentId, channels }))
+      .sort((left, right) => left.agentId.localeCompare(right.agentId));
+    const organizationControlPlane = buildOrganizationControlPlaneSnapshot({
+      localInstance: {
+        id: this.config.organization?.instanceId ?? `${this.config.host}:${this.config.port}`,
+        name: this.config.organization?.instanceName ?? "Local Agentwall",
+        url: baseUrl,
+        environment: this.config.organization?.environment,
+        region: this.config.organization?.region,
+      },
+      configuredInstances: this.config.organization?.instances ?? [],
+      observedChannels: channelInventory,
+      now: now.toISOString(),
+    });
+    const sessionStatusById = Object.fromEntries(allSessions.map((item) => [item.sessionId, item.status]));
     const promptRiskEvents = this.auditEvents.filter((event) =>
       event.highRiskFlow &&
       (event.provenance?.some((entry) => entry.trustLabel !== "trusted") ?? false)
@@ -928,13 +2037,13 @@ export class RuntimeState {
       },
       "low"
     );
-    const sessionCounts = countBy(recentSessions, (item) => item.status);
+    const sessionCounts = countBy(allSessions, (item) => item.status);
     const controlMatrix: OperatorSurfaceItem[] = [
       {
         label: "Approval Gate",
         value: this.approvalMode,
-        detail: `Timeout ${Math.round(this.config.approval.timeoutMs / 1000)}s · ${pendingApprovals.length} queued`,
-        status: this.approvalMode === "always" ? "pending" : "ok",
+        detail: `Timeout ${Math.round(this.config.approval.timeoutMs / 1000)}s · ${pendingApprovals.length} queued${oldestPendingApproval ? ` · oldest waiting ${formatAgeShort(oldestPendingApproval.createdAt, now)}` : ""}`,
+        status: this.approvalMode === "always" ? "pending" : pendingApprovals.length > 0 ? "warning" : "ok",
       },
       {
         label: "Session Control",
@@ -974,14 +2083,17 @@ export class RuntimeState {
       },
     ];
     const priorityQueue: PriorityQueueItem[] = [
-      ...pendingApprovals.slice(0, 4).map((item) => ({
+      ...prioritizedPendingApprovals.slice(0, 4).map((item) => ({
         id: item.requestId,
         category: "approval" as const,
         title: `${item.action} awaiting decision`,
         owner: item.agentId,
-        summary: `${item.plane} plane · ${item.riskLevel} risk`,
-        status: "pending" as const,
+        summary: `${item.plane} plane · ${item.riskLevel} risk · waiting ${formatAgeShort(item.createdAt, now)}`,
+        status: item.riskLevel === "critical" ? "critical" as const : "pending" as const,
         timestamp: item.createdAt,
+        drilldownKind: "approval" as const,
+        drilldownId: item.requestId,
+        primaryAction: "Review",
       })),
       ...recentSessions
         .filter((item) => item.status !== "active")
@@ -994,6 +2106,9 @@ export class RuntimeState {
           summary: item.note ?? `${item.lastAction} on ${item.lastPlane}`,
           status: item.status === "terminated" ? "critical" as const : "warning" as const,
           timestamp: item.lastSeenAt,
+          drilldownKind: "session" as const,
+          drilldownId: item.sessionId,
+          primaryAction: item.status === "terminated" ? "Inspect" : "Open",
         })),
       ...watchdogStates
         .filter((item) => item.killSwitchEngaged || item.status === "stale" || item.status === "expired")
@@ -1006,6 +2121,9 @@ export class RuntimeState {
           summary: item.reason,
           status: (item.status === "expired" ? "critical" : "warning") as RuntimeEventStatus,
           timestamp: item.lastHeartbeatAt ?? now.toISOString(),
+          drilldownKind: "agent" as const,
+          drilldownId: item.agentId,
+          primaryAction: "Inspect agent",
         })),
       ...promptRiskEvents.slice(0, 3).map((event) => ({
         id: event.id,
@@ -1015,26 +2133,81 @@ export class RuntimeState {
         summary: event.reasons[0] ?? "Untrusted provenance triggered high-risk flow",
         status: (event.riskLevel === "critical" ? "critical" : "warning") as RuntimeEventStatus,
         timestamp: event.timestamp,
+        drilldownKind: event.sessionId ? "session" as const : "agent" as const,
+        drilldownId: event.sessionId ?? event.agentId,
+        primaryAction: event.sessionId ? "Open session" : "Inspect agent",
       })),
-    ]
-      .sort((left, right) => right.timestamp.localeCompare(left.timestamp))
-      .slice(0, 8);
+    ];
+    const queueStatusRank: Record<RuntimeEventStatus, number> = { critical: 4, pending: 3, warning: 2, ok: 1 };
+    priorityQueue.sort((left, right) => {
+      const statusDelta = (queueStatusRank[right.status] ?? 0) - (queueStatusRank[left.status] ?? 0);
+      if (statusDelta !== 0) return statusDelta;
+      return right.timestamp.localeCompare(left.timestamp);
+    });
+    const trimmedPriorityQueue = priorityQueue.slice(0, 8);
+    if (prioritizedPendingApprovals.length > 0 && !trimmedPriorityQueue.some((item) => item.category === "approval")) {
+      trimmedPriorityQueue[trimmedPriorityQueue.length - 1] = {
+        id: prioritizedPendingApprovals[0].requestId,
+        category: "approval",
+        title: `${prioritizedPendingApprovals[0].action} awaiting decision`,
+        owner: prioritizedPendingApprovals[0].agentId,
+        summary: `${prioritizedPendingApprovals[0].plane} plane · ${prioritizedPendingApprovals[0].riskLevel} risk · waiting ${formatAgeShort(prioritizedPendingApprovals[0].createdAt, now)}`,
+        status: prioritizedPendingApprovals[0].riskLevel === "critical" ? "critical" : "pending",
+        timestamp: prioritizedPendingApprovals[0].createdAt,
+        drilldownKind: "approval",
+        drilldownId: prioritizedPendingApprovals[0].requestId,
+        primaryAction: "Review",
+      };
+    }
+    const criticalSignals = (riskCounts["critical"] ?? 0) + (approvalCounts["denied"] ?? 0) + (sessionCounts["terminated"] ?? 0);
     const attentionRequired =
       pendingApprovals.length > 0 ||
       watchdogStates.some((item) => item.killSwitchEngaged) ||
-      (riskCounts["critical"] ?? 0) > 0 ||
+      criticalSignals > 0 ||
       (sessionCounts["paused"] ?? 0) > 0;
-    const liveActivityEvents = this.events.filter((item) => !item.synthetic);
+    const liveActivityEvents = this.events.filter((item) => !item.synthetic && !item.operatorInitiated);
+    const liveApprovals = this.approvals.filter((item) => !item.simulated);
     const lastLiveEventAt = liveActivityEvents[0]?.timestamp;
-    const hasLiveActivity = Boolean(lastLiveEventAt) || this.totalRequests > 0 || this.approvals.length > 0;
+    const hasLiveActivity = Boolean(lastLiveEventAt) || this.totalRequests > 0 || liveApprovals.length > 0;
     const freshnessWindowMs = Math.max(this.config.watchdog.staleAfterMs, 30_000);
-    const activeAgentsNow = Array.from(this.agentActivity.values()).filter((item) => now.getTime() - new Date(item.lastSeenAt).getTime() <= freshnessWindowMs).length;
+    const activeAgentsNow = Array.from(this.agentActivity.values()).filter((item) => {
+      if (now.getTime() - new Date(item.lastSeenAt).getTime() > freshnessWindowMs) {
+        return false;
+      }
+      if (!item.sessionId) {
+        return true;
+      }
+      const session = this.sessions.get(item.sessionId);
+      return !session || session.status === "active";
+    }).length;
     const isFresh = !lastLiveEventAt ? false : now.getTime() - new Date(lastLiveEventAt).getTime() <= freshnessWindowMs;
+    const pausedSessions = sessionCounts["paused"] ?? 0;
+    const terminatedSessions = sessionCounts["terminated"] ?? 0;
     const operatorSummary = !hasLiveActivity
       ? "Awaiting first live agent activity. Policy and controls are loaded."
       : attentionRequired
-        ? `${pendingApprovals.length} approval(s) open, ${(riskCounts["critical"] ?? 0) + (sessionCounts["terminated"] ?? 0)} critical signal(s), ${sessionCounts["paused"] ?? 0} session(s) paused.`
+        ? `${pendingApprovals.length} approval(s) open, ${criticalSignals} critical signal(s), ${pausedSessions} session(s) paused${terminatedSessions > 0 ? `, ${terminatedSessions} terminated` : ""}.`
         : `No open approvals, no critical runtime signals, all tracked sessions active.`;
+    const recommendedActions = [
+      !hasLiveActivity ? "Send a test evaluation or approval request to confirm live telemetry end to end." : null,
+      prioritizedPendingApprovals.length > 0 ? `Review the pending approval queue starting with ${prioritizedPendingApprovals[0]?.action ?? "the highest-risk request"}${oldestPendingApproval ? `; oldest has been waiting ${formatAgeShort(oldestPendingApproval.createdAt, now)}.` : "."}` : null,
+      pausedSessions > 0 ? "Inspect paused sessions before resuming runtime traffic." : null,
+      terminatedSessions > 0 ? "Inspect terminated sessions and capture audit evidence before normalizing controls." : null,
+      watchdogStates.some((item) => item.killSwitchEngaged)
+        ? "Investigate watchdog kill-switch events before reopening egress."
+        : !isFresh && hasLiveActivity
+          ? "Telemetry is stale. Check agent heartbeats and ingestion wiring."
+          : null,
+      (riskCounts["critical"] ?? 0) > 0 ? "Drill into the latest critical signal and capture evidence before clearing it." : null,
+    ].filter((item): item is string => Boolean(item)).slice(0, 3);
+    const knowledgeBaseEntries = buildKnowledgeBaseEntries(this.config, baseUrl);
+    const knowledgeBaseAccess: KnowledgeBaseAccess = {
+      baseUrl,
+      dashboardUrl: `${baseUrl}/dashboard`,
+      knowledgeBaseUrl: `${baseUrl}/dashboard/knowledge-base`,
+      lastVerifiedAt: now.toISOString(),
+      lastVerifiedStatus: !hasLiveActivity ? "seeded" : isFresh ? "fresh" : "stale",
+    };
 
     return {
       brand: "Agentwall",
@@ -1043,6 +2216,7 @@ export class RuntimeState {
         status: watchdogStates.some((item) => item.killSwitchEngaged) ? "degraded" : "operational",
         attentionRequired,
         operatorSummary,
+        recommendedActions,
         uptimeMs,
         startedAt: this.startedAt.toISOString(),
         host: this.config.host,
@@ -1055,7 +2229,7 @@ export class RuntimeState {
         activeAgents: this.agentActivity.size,
         activeAgentsNow,
         pendingApprovals: pendingApprovals.length,
-        criticalSignals: (riskCounts["critical"] ?? 0) + (approvalCounts["denied"] ?? 0) + (sessionCounts["terminated"] ?? 0),
+        criticalSignals,
         approvalRate:
           recentApprovals.length === 0
             ? 100
@@ -1088,7 +2262,7 @@ export class RuntimeState {
         sessionCounts,
       },
       controlMatrix,
-      priorityQueue,
+      priorityQueue: trimmedPriorityQueue,
       policyHotspots,
       approvals: {
         pending: pendingApprovals,
@@ -1096,7 +2270,14 @@ export class RuntimeState {
       },
       sessions: {
         recent: recentSessions,
+        statusById: sessionStatusById,
       },
+      channelInventory: {
+        total: channelInventory.length,
+        byAgent: channelInventoryByAgent,
+        recent: channelInventory.slice(0, 16),
+      },
+      organizationControlPlane,
       runtimeFlows: this.runtimeFlows.slice(0, 12),
       evidenceLedger: this.evidence.slice(0, 12),
       taskGraph: {
@@ -1122,6 +2303,13 @@ export class RuntimeState {
       activeAgents: Array.from(this.agentActivity.values()).sort((left, right) =>
         right.lastSeenAt.localeCompare(left.lastSeenAt)
       ),
+      simulation: this.simulation,
+      knowledgeBase: {
+        access: knowledgeBaseAccess,
+        sections: buildKnowledgeBaseSections(knowledgeBaseEntries),
+        entries: knowledgeBaseEntries,
+        runtimeContext: knowledgeBaseEntries.filter((entry) => entry.category === "runtime_context"),
+      },
     };
   }
 
@@ -1157,6 +2345,16 @@ export class RuntimeState {
     if (kind === "approval") {
       const approval = this.approvals.find((item) => item.requestId === id);
       if (!approval) return undefined;
+      const prioritizedPendingApprovals = prioritizePendingApprovals(this.approvals.filter((item) => item.status === "pending"));
+      const queueIndex = approval.status === "pending"
+        ? prioritizedPendingApprovals.findIndex((item) => item.requestId === id)
+        : -1;
+      const queuePosition = queueIndex >= 0 ? queueIndex + 1 : 0;
+      const previousPending = queueIndex > 0 ? prioritizedPendingApprovals[queueIndex - 1] : null;
+      const nextPending = queueIndex >= 0 && queueIndex < prioritizedPendingApprovals.length - 1
+        ? prioritizedPendingApprovals[queueIndex + 1]
+        : null;
+      const now = new Date();
       return {
         kind,
         id,
@@ -1168,11 +2366,29 @@ export class RuntimeState {
           { label: "Session", value: approval.sessionId },
           { label: "Mode", value: approval.mode },
           { label: "Risk", value: approval.riskLevel },
+          ...(approval.status === "pending" && queuePosition > 0
+            ? [{ label: "Queue", value: `${queuePosition} of ${prioritizedPendingApprovals.length} pending` }]
+            : []),
+          ...(approval.matchedRules[0]
+            ? [{ label: "Rule hit", value: approval.matchedRules[0] }]
+            : []),
         ],
         timeline: this.events
           .filter((item) => item.detail?.["requestId"] === id)
           .slice(0, 8)
           .map((item) => ({ timestamp: item.timestamp, title: item.title, summary: item.summary, status: item.status })),
+        queueNavigation: approval.status === "pending"
+          ? {
+              previousRequestId: previousPending?.requestId ?? null,
+              previousTarget: previousPending ? `${previousPending.action} · ${previousPending.sessionId}` : null,
+              previousDetail: summarizePendingApprovalNeighbor(previousPending, now),
+              previousRule: previousPending?.matchedRules?.[0] ?? null,
+              nextRequestId: nextPending?.requestId ?? null,
+              nextTarget: nextPending ? `${nextPending.action} · ${nextPending.sessionId}` : null,
+              nextDetail: summarizePendingApprovalNeighbor(nextPending, now),
+              nextRule: nextPending?.matchedRules?.[0] ?? null,
+            }
+          : undefined,
         related: {
           sessions: this.sessions.has(approval.sessionId) ? [this.sessions.get(approval.sessionId) as SessionRuntime] : [],
           approvals: [approval],
@@ -1284,7 +2500,8 @@ export class RuntimeState {
     action: string,
     timestamp: string,
     sessionId?: string,
-    riskLevel?: RiskLevel
+    riskLevel?: RiskLevel,
+    channelId?: string
   ): void {
     this.agentActivity.set(agentId, {
       agentId,
@@ -1293,7 +2510,57 @@ export class RuntimeState {
       lastAction: action,
       sessionId,
       riskLevel,
+      latestChannelId: channelId,
     });
+  }
+
+  private observeChannel(input: {
+    agentId: string;
+    sessionId: string;
+    channelId?: string;
+    userId?: string;
+    roleIds?: string[];
+    plane: string;
+    action: string;
+    timestamp: string;
+    riskLevel: RiskLevel;
+  }): void {
+    if (!input.channelId) return;
+    const key = `${input.agentId}:${input.channelId}`;
+    const existing = this.channelActivity.get(key) ?? {
+      id: key,
+      agentId: input.agentId,
+      channelId: input.channelId,
+      lastSeenAt: input.timestamp,
+      lastPlane: input.plane,
+      lastAction: input.action,
+      riskLevel: input.riskLevel,
+      sessionIds: [],
+      userIds: [],
+      roleIds: [],
+    };
+
+    existing.lastSeenAt = input.timestamp;
+    existing.lastPlane = input.plane;
+    existing.lastAction = input.action;
+    if (scoreRisk(input.riskLevel) > scoreRisk(existing.riskLevel)) {
+      existing.riskLevel = input.riskLevel;
+    }
+    if (!existing.sessionIds.includes(input.sessionId)) {
+      existing.sessionIds.unshift(input.sessionId);
+      existing.sessionIds = existing.sessionIds.slice(0, 8);
+    }
+    if (input.userId && !existing.userIds.includes(input.userId)) {
+      existing.userIds.unshift(input.userId);
+      existing.userIds = existing.userIds.slice(0, 8);
+    }
+    for (const roleId of input.roleIds ?? []) {
+      if (!existing.roleIds.includes(roleId)) {
+        existing.roleIds.unshift(roleId);
+      }
+    }
+    existing.roleIds = existing.roleIds.slice(0, 12);
+    this.channelActivity.set(key, existing);
   }
 
   private observeSession(input: {
@@ -1303,6 +2570,9 @@ export class RuntimeState {
     action: string;
     timestamp: string;
     riskLevel: RiskLevel;
+    channelId?: string;
+    simulated?: boolean;
+    scenarioId?: string;
   }): SessionRuntime {
     const session = this.sessions.get(input.sessionId) ?? {
       sessionId: input.sessionId,
@@ -1316,6 +2586,8 @@ export class RuntimeState {
       pendingApprovals: 0,
       evidenceCount: 0,
       taskCount: 0,
+      simulated: input.simulated,
+      scenarioId: input.scenarioId,
     };
     session.agentId = input.agentId;
     session.lastSeenAt = input.timestamp;
@@ -1324,7 +2596,11 @@ export class RuntimeState {
     if (scoreRisk(input.riskLevel) > scoreRisk(session.riskLevel)) {
       session.riskLevel = input.riskLevel;
     }
+    session.simulated = session.simulated ?? input.simulated;
+    session.scenarioId = session.scenarioId ?? input.scenarioId;
+    session.channelId = input.channelId ?? session.channelId;
     this.sessions.set(input.sessionId, session);
+    this.sessionRecency.set(input.sessionId, ++this.sessionRecencyCounter);
     return session;
   }
 
@@ -1359,6 +2635,8 @@ export class RuntimeState {
     riskLevel: RiskLevel;
     status: TaskNode["status"];
     summary: string;
+    simulated?: boolean;
+    scenarioId?: string;
   }): TaskNode {
     const taskId = `${input.sessionId}:${input.plane}:${input.action}`;
     const existing = this.tasks.get(taskId);
@@ -1375,6 +2653,8 @@ export class RuntimeState {
       createdAt: input.timestamp,
       updatedAt: input.timestamp,
       evidenceIds: [],
+      simulated: input.simulated,
+      scenarioId: input.scenarioId,
     };
     task.summary = input.summary;
     task.status = input.status;
@@ -1382,6 +2662,8 @@ export class RuntimeState {
     if (scoreRisk(input.riskLevel) > scoreRisk(task.riskLevel)) {
       task.riskLevel = input.riskLevel;
     }
+    task.simulated = task.simulated ?? input.simulated;
+    task.scenarioId = task.scenarioId ?? input.scenarioId;
     this.tasks.set(taskId, task);
     const previousTaskId = this.lastTaskForSession.get(input.sessionId);
     if (previousTaskId && previousTaskId !== taskId && !this.taskEdges.some((edge) => edge.from === previousTaskId && edge.to === taskId && edge.relationship === "precedes")) {

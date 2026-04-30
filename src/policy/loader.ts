@@ -5,16 +5,18 @@ import { z } from "zod";
 import {
   AgentContext,
   DecisionSchema,
+  ExecutionMode,
   FlowLabelSchema,
   PlaneSchema,
   PolicyRule,
+  PolicyRuleScope,
   ProvenanceSourceSchema,
   RiskLevelSchema,
   TrustLabelSchema,
 } from "../types";
 import { extractHostname, isPrivateHostname, isPrivateIp } from "../planes/network/ssrf";
 
-const MatchSchema = z.object({
+export const MatchSchema = z.object({
   type: z.enum(["hostname-equals"]).optional(),
   values: z.array(z.string()).optional(),
   action: z.object({
@@ -40,16 +42,20 @@ const MatchSchema = z.object({
     userId: z.array(z.string()).optional(),
     roleId: z.array(z.string()).optional(),
   }).optional(),
+  subject: z.object({
+    agentId: z.array(z.string()).optional(),
+    sessionId: z.array(z.string()).optional(),
+  }).optional(),
   control: z.object({
     executionMode: z.array(z.enum(["normal", "read_only", "answer_only"])).optional(),
   }).optional(),
 }).refine((value) => {
   return Boolean(
-    value.type || value.action || value.payload || value.flow || value.provenance || value.actor || value.control
+    value.type || value.action || value.payload || value.flow || value.provenance || value.actor || value.subject || value.control
   );
 }, "Custom rule match must include at least one matcher");
 
-const DeclarativePolicyRuleSchema = z.object({
+export const DeclarativePolicyRuleSchema = z.object({
   id: z.string(),
   description: z.string(),
   plane: PlaneSchema.or(z.literal("all")),
@@ -60,12 +66,13 @@ const DeclarativePolicyRuleSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
-const PolicyFileSchema = z.object({
+export const PolicyFileSchema = z.object({
   version: z.string().optional(),
   rules: z.array(DeclarativePolicyRuleSchema).default([]),
 });
 
-type DeclarativePolicyRule = z.infer<typeof DeclarativePolicyRuleSchema>;
+export type DeclarativePolicyRule = z.infer<typeof DeclarativePolicyRuleSchema>;
+export type DeclarativePolicyFile = z.infer<typeof PolicyFileSchema>;
 
 function payloadText(payload: Record<string, unknown>): string {
   return JSON.stringify(payload).toLowerCase();
@@ -100,6 +107,8 @@ function buildMatch(rule: DeclarativePolicyRule): (ctx: AgentContext) => boolean
   const expectedChannelIds = rule.match.actor?.channelId;
   const expectedUserIds = rule.match.actor?.userId;
   const expectedRoleIds = rule.match.actor?.roleId;
+  const expectedAgentIds = rule.match.subject?.agentId;
+  const expectedSessionIds = rule.match.subject?.sessionId;
   const expectedExecutionModes = rule.match.control?.executionMode;
 
   return (ctx: AgentContext) => {
@@ -169,6 +178,15 @@ function buildMatch(rule: DeclarativePolicyRule): (ctx: AgentContext) => boolean
       if (!expectedRoleIds.some((roleId) => roleIds.includes(roleId))) return false;
     }
 
+    if (expectedAgentIds?.length) {
+      if (!expectedAgentIds.includes(ctx.agentId)) return false;
+    }
+
+    if (expectedSessionIds?.length) {
+      const sessionId = ctx.sessionId;
+      if (!sessionId || !expectedSessionIds.includes(sessionId)) return false;
+    }
+
     if (expectedExecutionModes?.length) {
       const executionMode = ctx.control?.executionMode ?? "normal";
       if (!expectedExecutionModes.includes(executionMode)) return false;
@@ -195,12 +213,54 @@ function validateDeclarativeRuleShape(rule: DeclarativePolicyRule): void {
   }
 }
 
-export function loadDeclarativePolicyRules(policyPath: string): PolicyRule[] {
+export function buildRuleScope(rule: DeclarativePolicyRule): PolicyRuleScope | undefined {
+  const actor = {
+    channelIds: rule.match.actor?.channelId,
+    userIds: rule.match.actor?.userId,
+    roleIds: rule.match.actor?.roleId,
+  };
+  const subject = {
+    agentIds: rule.match.subject?.agentId,
+    sessionIds: rule.match.subject?.sessionId,
+  };
+  const control = {
+    executionModes: rule.match.control?.executionMode as ExecutionMode[] | undefined,
+  };
+
+  const scope: PolicyRuleScope = {};
+
+  if (actor.channelIds?.length || actor.userIds?.length || actor.roleIds?.length) {
+    scope.actor = actor;
+  }
+
+  if (subject.agentIds?.length || subject.sessionIds?.length) {
+    scope.subject = subject;
+  }
+
+  if (control.executionModes?.length) {
+    scope.control = control;
+  }
+
+  return scope.actor || scope.subject || scope.control ? scope : undefined;
+}
+
+export function loadDeclarativePolicyFile(policyPath: string): DeclarativePolicyFile {
   const resolved = path.resolve(policyPath);
   const raw = fs.readFileSync(resolved, "utf-8");
   const parsed = PolicyFileSchema.parse(yaml.load(raw));
+  parsed.rules.forEach(validateDeclarativeRuleShape);
+  return parsed;
+}
 
-  return parsed.rules
+export function writeDeclarativePolicyFile(policyPath: string, policyFile: DeclarativePolicyFile): void {
+  const resolved = path.resolve(policyPath);
+  const parsed = PolicyFileSchema.parse(policyFile);
+  parsed.rules.forEach(validateDeclarativeRuleShape);
+  fs.writeFileSync(resolved, yaml.dump(parsed, { noRefs: true }));
+}
+
+export function compileDeclarativePolicyRules(policyFile: DeclarativePolicyFile): PolicyRule[] {
+  return policyFile.rules
     .filter((rule) => rule.enabled !== false)
     .map((rule) => {
       validateDeclarativeRuleShape(rule);
@@ -212,6 +272,11 @@ export function loadDeclarativePolicyRules(policyPath: string): PolicyRule[] {
         decision: rule.decision,
         riskLevel: rule.riskLevel,
         reason: rule.reason,
+        scope: buildRuleScope(rule),
       } satisfies PolicyRule;
     });
+}
+
+export function loadDeclarativePolicyRules(policyPath: string): PolicyRule[] {
+  return compileDeclarativePolicyRules(loadDeclarativePolicyFile(policyPath));
 }

@@ -7,6 +7,36 @@ export interface AgentwallConfig {
   port: number;
   host: string;
   logLevel: string;
+  telemetry?: {
+    enabled: boolean;
+    endpoint?: string;
+    serviceName?: string;
+    timeoutMs?: number;
+    headers?: Record<string, string>;
+  };
+  dashboard?: {
+    publicBaseUrl?: string;
+  };
+  organization?: {
+    instanceId?: string;
+    instanceName?: string;
+    environment?: string;
+    region?: string;
+    instances?: Array<{
+      id: string;
+      name: string;
+      url: string;
+      role: "local" | "managed" | "remote";
+      status: "online" | "degraded" | "unknown";
+      environment?: string;
+      region?: string;
+      lastSeenAt?: string;
+      summaryUrl?: string;
+      authTokenEnv?: string;
+      authHeaderName?: string;
+      pollTimeoutMs?: number;
+    }>;
+  };
   approval: {
     mode: "auto" | "always" | "never";
     timeoutMs: number;
@@ -28,14 +58,79 @@ export interface AgentwallConfig {
     approvedHashesPath?: string;
   };
   watchdog: HeartbeatConfig;
+  runtimeGuards?: {
+    enabled: boolean;
+    requestPerMinutePerSession: number;
+    toolActionPerMinutePerSession: number;
+    approvalRequestsPerMinutePerSession: number;
+    approvalResponsesPerMinutePerActor: number;
+    maxPendingApprovalsGlobal: number;
+    maxPendingApprovalsPerSession: number;
+    costBudgetPerHourPerSession: number;
+    shield?: {
+      requestRateMultiplier?: number;
+      toolActionRateMultiplier?: number;
+      approvalRequestRateMultiplier?: number;
+      approvalResponseRateMultiplier?: number;
+      maxPendingGlobalMultiplier?: number;
+      maxPendingSessionMultiplier?: number;
+      costBudgetMultiplier?: number;
+      defaultDurationMs?: number;
+      queuePriorityPressureThreshold?: number;
+    };
+    costWeights: {
+      evaluateBase: number;
+      approvalRequest: number;
+      approvalRequiresManual: number;
+      toolActionMultiplier: number;
+      highRiskMultiplier: number;
+      criticalRiskMultiplier: number;
+    };
+  };
 }
 
-export type LegacyHarborConfig = AgentwallConfig;
+
+export const defaultRuntimeGuards = {
+  enabled: true,
+  requestPerMinutePerSession: 180,
+  toolActionPerMinutePerSession: 60,
+  approvalRequestsPerMinutePerSession: 30,
+  approvalResponsesPerMinutePerActor: 90,
+  maxPendingApprovalsGlobal: 300,
+  maxPendingApprovalsPerSession: 25,
+  costBudgetPerHourPerSession: 1200,
+  shield: {
+    requestRateMultiplier: 0.5,
+    toolActionRateMultiplier: 0.5,
+    approvalRequestRateMultiplier: 0.5,
+    approvalResponseRateMultiplier: 0.5,
+    maxPendingGlobalMultiplier: 0.6,
+    maxPendingSessionMultiplier: 0.6,
+    costBudgetMultiplier: 0.75,
+    defaultDurationMs: 10 * 60_000,
+    queuePriorityPressureThreshold: 0.65,
+  },
+  costWeights: {
+    evaluateBase: 1,
+    approvalRequest: 4,
+    approvalRequiresManual: 2,
+    toolActionMultiplier: 3,
+    highRiskMultiplier: 2,
+    criticalRiskMultiplier: 3,
+  },
+};
 
 const defaults: AgentwallConfig = {
   port: 3000,
   host: "127.0.0.1",
   logLevel: "info",
+  telemetry: {
+    enabled: false,
+    serviceName: "agentwall",
+    timeoutMs: 1500,
+    headers: {},
+  },
+  dashboard: {},
   approval: {
     mode: "auto",
     timeoutMs: 30000,
@@ -66,6 +161,7 @@ const defaults: AgentwallConfig = {
     timeoutMs: 30000,
     killSwitchMode: "deny_all",
   },
+  runtimeGuards: defaultRuntimeGuards,
 };
 
 export function loadConfig(configPath?: string): AgentwallConfig {
@@ -74,11 +170,8 @@ export function loadConfig(configPath?: string): AgentwallConfig {
   const candidatePaths = [
     configPath,
     process.env["AGENTWALL_CONFIG"],
-    process.env["HARBOR_CONFIG"], // legacy compatibility only
     "./agentwall.config.yaml",
     "./agentwall.config.yml",
-    "./harbor.config.yaml", // legacy compatibility only
-    "./harbor.config.yml", // legacy compatibility only
     "./examples/config.yaml",
   ].filter(Boolean) as string[];
 

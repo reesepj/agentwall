@@ -16,9 +16,12 @@ Ship the minimum runtime-defense surface that materially lowers agent risk, then
 
 ## v0.2 (Operational hardening)
 - [ ] Signed/tamper-evident audit events
-- [ ] Webhook or chat notifications for pending approvals
+- [x] Webhook notifications for pending/resolved approvals
+- [ ] Chat notifications for pending approvals
+- [x] FloodGuard shield mode + queue prioritization + per-session overrides
 - [ ] Per-agent/session policy overlays
-- [ ] Dashboard/operator UX for detection timeline views
+- [x] Dashboard/operator UX for detection timeline views
+- [x] Command deck default surface (`Today / Waiting / Risks / Approvals / Auto-handled`)
 
 ## v0.3 (Integration acceleration)
 - [ ] Thin SDK wrappers (TS/Python) for preflight evaluate hooks

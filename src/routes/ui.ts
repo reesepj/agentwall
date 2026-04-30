@@ -40,6 +40,18 @@ export async function uiRoutes(app: FastifyInstance): Promise<void> {
     await sendAsset(reply, "index.html");
   });
 
+  app.get("/dashboard", async (_req, reply) => {
+    await sendAsset(reply, "index.html");
+  });
+
+  app.get("/knowledge-base", async (_req, reply) => {
+    await sendAsset(reply, "index.html");
+  });
+
+  app.get("/dashboard/knowledge-base", async (_req, reply) => {
+    await sendAsset(reply, "index.html");
+  });
+
   app.get("/portfolio", async (_req, reply) => {
     await sendAsset(reply, "portfolio.html");
   });

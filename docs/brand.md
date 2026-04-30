@@ -10,11 +10,15 @@ This repo now includes a practical, editable brand starter for Agentwall.
 
 ## Logo assets
 
-Located in `assets/brand/`:
+Located in `public/assets/brand/`:
 
 - `agentwall-logo-primary.svg` — default lockup with wordmark + tagline
 - `agentwall-logo-mark.svg` — square app/icon mark
 - `agentwall-logo-monochrome.svg` — single-color lockup for constrained surfaces
+- `favicon.svg` — browser/favicon mark for public surfaces
+- `icon_idle.svg` — low-activity / standby runtime state
+- `icon_flow.svg` — active flow / simulation state
+- `icon_active.svg` — healthy live runtime state
 
 ## Color direction
 

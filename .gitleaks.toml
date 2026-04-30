@@ -1,0 +1,12 @@
+[allowlist]
+description = "Allow known fake secrets in tests and docs examples"
+regexes = [
+  '''AKIAIO...MPLE''',
+  '''FAKE_GITHUB_PAT_EXAMPLE''',
+  '''alice@example.com'''
+]
+paths = [
+  '''tests/.*''',
+  '''README\.md''',
+  '''docs/.*'''
+]

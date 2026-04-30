@@ -10,9 +10,10 @@
     "onboard": "ts-node src/onboarding.ts",
     "uninstall:system": "bash ./scripts/agentwall-uninstall.sh",
     "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "test:security-regression": "node scripts/security-regression.js",
+    "security:scan": "hermes-security-scan .",
+    "security:monitor": "athena-security-monitor --from-start",
     "lint": "tsc --noEmit",
-    "smoke:local": "node scripts/smoke-local.js",
-    "deploy:check": "bash scripts/deploy.sh",
     "cli": "node dist/cli.js",
     "init": "node dist/cli.js init",
     "doctor": "node dist/cli.js doctor"
@@ -25,20 +26,8 @@
     "ai-safety"
   ],
   "license": "MIT",
-  "files": [
-    "dist/",
-    "public/",
-    "examples/",
-    "scripts/agentwall-install.sh",
-    "scripts/agentwall-uninstall.sh",
-    "scripts/deploy.sh",
-    "README.md",
-    "CHANGELOG.md",
-    "LICENSE",
-    "SECURITY.md"
-  ],
   "dependencies": {
-    "fastify": "^5.8.4",
+    "fastify": "5.8.5",
     "js-yaml": "^4.1.0",
     "pino": "^8.19.0",
     "zod": "^3.22.4"

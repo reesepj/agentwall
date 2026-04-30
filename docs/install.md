@@ -8,7 +8,7 @@
 ## Local source install
 
 ```bash
-git clone https://github.com/reesepj/agentwall.git
+git clone https://github.com/your-org/agentwall
 cd agentwall
 npm install
 npm run build
@@ -41,30 +41,11 @@ agentwall doctor
 agentwall start
 ```
 
-## Verify health and policy decisions
+## Verify health
 
 ```bash
 curl http://127.0.0.1:3000/health
-npm run smoke:local
 ```
-
-`npm run smoke:local` checks `/health` plus representative allowed and denied `/evaluate` decisions against the running service. Use `AGENTWALL_URL=http://host:port npm run smoke:local` for a non-default target.
-
-## Local deploy readiness check
-
-```bash
-npm run deploy:check
-npm run start
-AGENTWALL_URL=http://127.0.0.1:3000 npm run smoke:local
-```
-
-`npm run deploy:check` runs type-check, build, tests, and high-severity audit from the same repo path. If `node_modules` is missing, it first restores locked dependencies with `npm ci`.
-
-## GitHub Pages launch surface
-
-The repo includes `.github/workflows/pages.yml`, which publishes the static `public/` directory on pushes to `main` or `master` and on manual workflow dispatch.
-
-After the repo is public, enable Pages in GitHub repository settings with source `GitHub Actions`, then run or push the Pages workflow.
 
 ## Uninstall
 

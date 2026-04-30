@@ -1,0 +1,10 @@
+{
+  "project": "harbor",
+  "path": "/home/reese/.openclaw/workspace/harbor",
+  "owner": "hermes",
+  "mode": "write",
+  "task": "describe current task here",
+  "created_at": "2026-03-26T16:00:00Z",
+  "expires_at": "2026-03-26T18:00:00Z",
+  "notes": "copy to .agent.lock when active"
+}

@@ -3,18 +3,19 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Agentwall Control Console</title>
+    <title>Agentwall Operator Surface</title>
+    <link rel="icon" type="image/svg+xml" href="/assets/brand/favicon.svg" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <div class="shell">
       <header class="topbar">
         <div class="brand-lockup">
-          <div class="brand-mark" aria-hidden="true">AW</div>
+          <div class="brand-mark" aria-hidden="true"><img id="brand-mark-img" src="/assets/brand/icon_idle.svg" alt="" /></div>
           <div>
-            <p class="eyebrow">Agentwall</p>
-            <h1>Security Console</h1>
-            <p class="topbar-copy">Operator-grade visibility across policy, approvals, provenance, and runtime enforcement.</p>
+            <img src="/assets/brand/agentwall-logo-primary.svg" alt="Agentwall" style="height:52px; width:auto; display:block; margin-bottom:8px;" />
+            <h1>Agentwall Operator Surface</h1>
+            <p class="topbar-copy">See what is blocked, what is live, and where to drill next. Every card on this page should open something real.</p>
           </div>
         </div>
         <div class="topbar-meta">
@@ -29,7 +30,24 @@
         </div>
       </header>
 
-      <main class="layout">
+      <nav class="section-nav" aria-label="Mission Control navigation">
+        <a id="nav-dashboard" class="section-link" href="/dashboard" data-app-nav="dashboard">Dashboard</a>
+        <a id="nav-knowledge-base" class="section-link" href="/dashboard/knowledge-base" data-app-nav="knowledge-base">Knowledge Base</a>
+      </nav>
+
+      <div class="advanced-user-control" aria-label="Console depth" data-route-view="dashboard">
+        <div class="advanced-user-copy">
+          <p class="eyebrow">Console Depth</p>
+          <strong id="console-mode-label">Operator View</strong>
+          <span id="console-mode-summary">Simple by default. Enable Advanced User for granular controls.</span>
+        </div>
+        <button id="advanced-user-slider" class="advanced-user-slider" type="button" role="switch" aria-checked="false" data-console-mode-toggle aria-label="Advanced User mode">
+          <span class="slider-track" aria-hidden="true"><span class="slider-thumb"></span></span>
+          <span class="slider-copy"><span>Advanced User</span><small>Granular control</small></span>
+        </button>
+      </div>
+
+      <main class="layout" data-route-view="dashboard">
         <section class="hero panel">
           <div class="hero-main">
             <div>
@@ -42,7 +60,17 @@
           <div class="hero-grid" id="hero-metrics"></div>
         </section>
 
-        <section class="panel">
+        <section class="panel panel-wide core-panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Command Deck</p>
+              <h3>Today, Waiting, Risks, Approvals, Auto-handled</h3>
+            </div>
+          </div>
+          <div id="command-deck" class="stack"></div>
+        </section>
+
+        <section class="panel core-panel">
           <div class="panel-head">
             <div>
               <p class="eyebrow">Control Surface</p>
@@ -52,7 +80,7 @@
           <div id="control-matrix" class="stack"></div>
         </section>
 
-        <section class="panel">
+        <section class="panel core-panel">
           <div class="panel-head">
             <div>
               <p class="eyebrow">Operator Workbench</p>
@@ -62,7 +90,7 @@
           <div id="operator-workbench" class="stack"></div>
         </section>
 
-        <section class="panel">
+        <section class="panel core-panel">
           <div class="panel-head">
             <div>
               <p class="eyebrow">Priority Queue</p>
@@ -72,7 +100,38 @@
           <div id="priority-queue" class="stack"></div>
         </section>
 
-        <section class="panel">
+        <section class="panel core-panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Detection Timeline</p>
+              <h3>What Happened and What Needs Action</h3>
+            </div>
+          </div>
+          <div id="operator-timeline" class="stack"></div>
+        </section>
+
+
+        <section class="panel core-panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Incident Command</p>
+              <h3>Guided Containment</h3>
+            </div>
+          </div>
+          <div id="incident-command" class="stack"></div>
+        </section>
+
+        <section class="panel advanced-panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Threat Hunt</p>
+              <h3>Investigation Workbench</h3>
+            </div>
+          </div>
+          <div id="investigation-workbench" class="stack"></div>
+        </section>
+
+        <section class="panel core-panel">
           <div class="panel-head">
             <div>
               <p class="eyebrow">System Health</p>
@@ -82,11 +141,21 @@
           <div id="system-health" class="stack"></div>
         </section>
 
-        <section class="panel panel-wide">
+        <section id="organization-panel" class="panel panel-wide advanced-panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Organization Control Plane</p>
+              <h3>Instances, Gateways, Agents, and Channels</h3>
+            </div>
+          </div>
+          <div id="org-control-plane" class="stack"></div>
+        </section>
+
+        <section id="policy-panel" class="panel panel-wide advanced-panel">
           <div class="panel-head">
             <div>
               <p class="eyebrow">Policy Execution</p>
-              <h3>Decision Distribution and Hot Rules</h3>
+              <h3>Decision Distribution, Hot Rules, and Scoped Guardrails</h3>
             </div>
           </div>
           <div class="dual-grid">
@@ -99,9 +168,23 @@
               <div id="policy-hotspots" class="stack"></div>
             </div>
           </div>
+          <div class="dual-grid">
+            <div>
+              <div class="subhead">Scoped Guardrails</div>
+              <div id="policy-scoped-rules" class="stack"></div>
+            </div>
+            <div>
+              <div class="subhead">Guardrail editor</div>
+              <div id="policy-guardrail-editor" class="stack"></div>
+            </div>
+          </div>
+          <div>
+            <div class="subhead">Communication Channels</div>
+            <div id="policy-channel-inventory" class="stack"></div>
+          </div>
         </section>
 
-        <section class="panel">
+        <section class="panel core-panel">
           <div class="panel-head">
             <div>
               <p class="eyebrow">Risk Posture</p>
@@ -111,7 +194,7 @@
           <div id="risk-posture" class="stack"></div>
         </section>
 
-        <section class="panel panel-wide approvals-panel">
+        <section class="panel panel-wide approvals-panel core-panel">
           <div class="panel-head">
             <div>
               <p class="eyebrow">Approvals</p>
@@ -121,7 +204,7 @@
           <div id="approvals" class="stack"></div>
         </section>
 
-        <section class="panel panel-wide">
+        <section class="panel panel-wide advanced-panel">
           <div class="panel-head">
             <div>
               <p class="eyebrow">Live Runtime</p>
@@ -140,7 +223,7 @@
           </div>
         </section>
 
-        <section class="panel panel-wide">
+        <section class="panel panel-wide advanced-panel">
           <div class="panel-head">
             <div>
               <p class="eyebrow">Evidence Graph</p>
@@ -159,7 +242,7 @@
           </div>
         </section>
 
-        <section class="panel panel-wide">
+        <section class="panel panel-wide advanced-panel">
           <div class="panel-head">
             <div>
               <p class="eyebrow">Drilldown</p>
@@ -169,7 +252,7 @@
           <div id="drilldown" class="stack"></div>
         </section>
 
-        <section class="panel panel-wide">
+        <section class="panel panel-wide advanced-panel">
           <div class="panel-head">
             <div>
               <p class="eyebrow">Audit Feed</p>
@@ -179,7 +262,7 @@
           <div id="audit-feed" class="feed"></div>
         </section>
 
-        <section class="panel panel-wide">
+        <section class="panel panel-wide advanced-panel">
           <div class="panel-head">
             <div>
               <p class="eyebrow">Inspection Activity</p>
@@ -202,7 +285,7 @@
           </div>
         </section>
 
-        <section class="panel panel-wide">
+        <section class="panel panel-wide advanced-panel">
           <div class="panel-head">
             <div>
               <p class="eyebrow">Event Feed</p>
@@ -212,8 +295,76 @@
           <div id="event-feed" class="feed"></div>
         </section>
       </main>
+
+      <main class="layout knowledge-layout" data-route-view="knowledge-base">
+        <section class="panel panel-wide kb-hero">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Knowledge Base</p>
+              <h3>Agentwall Mission Control Reference</h3>
+            </div>
+          </div>
+          <div class="kb-hero-grid">
+            <div>
+              <p id="kb-summary" class="muted">Loading knowledge base entries and access metadata.</p>
+            </div>
+            <div>
+              <div class="subhead">Canonical Access</div>
+              <div id="kb-access-panel" class="stack"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Index</p>
+              <h3>Knowledge Domains</h3>
+            </div>
+          </div>
+          <div id="kb-index-cards" class="kb-index-grid"></div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Search</p>
+              <h3>Find KB Entries</h3>
+            </div>
+          </div>
+          <div class="kb-search-bar">
+            <label class="kb-search-field" for="kb-search">
+              <span class="sr-only">Search knowledge base</span>
+              <input id="kb-search" type="search" placeholder="Search sources, concepts, articles, questions, file paths, and runtime context" autocomplete="off" />
+            </label>
+            <button id="kb-clear-search" class="mode-tab kb-clear-button" type="button">Clear filters</button>
+            <div id="kb-filter-chips" class="chip-row"></div>
+          </div>
+          <div id="kb-search-meta" class="meta"></div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Runtime Context</p>
+              <h3>Explicit Context Probes</h3>
+            </div>
+          </div>
+          <div id="kb-runtime-context" class="kb-runtime-grid"></div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Entries</p>
+              <h3>Curated Mission Control Material</h3>
+            </div>
+          </div>
+          <div id="kb-entry-list" class="stack"></div>
+        </section>
+      </main>
     </div>
 
-    <script type="module" src="/app.js"></script>
+    <script type="module" src="/app.js?v=advanced-user-slider"></script>
   </body>
 </html>

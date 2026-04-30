@@ -7,11 +7,13 @@ import { policyRoutes } from "./routes/policy";
 import { inspectRoutes } from "./routes/inspect";
 import { approvalRoutes } from "./routes/approval";
 import { registerAuditSink, stdoutSink } from "./audit/logger";
-import { AgentwallConfig } from "./config";
+import { AgentwallConfig, defaultRuntimeGuards } from "./config";
 import { RuntimeState } from "./dashboard/state";
 import { dashboardRoutes } from "./routes/dashboard";
 import { uiRoutes } from "./routes/ui";
 import { FileBackedPolicyRuntime, ReloadResult } from "./policy/runtime";
+import { RuntimeFloodGuard } from "./runtime/floodguard";
+import { createDecisionTraceExporter } from "./telemetry/otel";
 
 export interface AgentwallServer {
   app: FastifyInstance;
@@ -40,9 +42,15 @@ export async function buildServer(config: AgentwallConfig): Promise<AgentwallSer
     config.approval.mode,
     config.approval.timeoutMs,
     config.approval.backend,
-    config.approval.persistencePath
+    config.approval.persistencePath,
+    {
+      webhookUrl: config.approval.webhookUrl,
+      logger: app.log,
+    }
   );
   const runtime = new RuntimeState(config);
+  const floodGuard = new RuntimeFloodGuard(config.runtimeGuards ?? defaultRuntimeGuards);
+  const telemetry = createDecisionTraceExporter(config.telemetry, app.log);
   runtime.hydrateApprovalQueue(gate.getPersistedPending());
 
   const applyReload = (result: ReloadResult) => {
@@ -75,10 +83,10 @@ export async function buildServer(config: AgentwallConfig): Promise<AgentwallSer
   });
 
   await healthRoutes(app);
-  await policyRoutes(app, engine, runtime);
-  await inspectRoutes(app, config, runtime);
-  await approvalRoutes(app, gate, runtime);
-  await dashboardRoutes(app, engine, gate, runtime);
+  await policyRoutes(app, engine, runtime, floodGuard, telemetry);
+  await inspectRoutes(app, config, runtime, telemetry);
+  await approvalRoutes(app, gate, runtime, floodGuard);
+  await dashboardRoutes(app, config, engine, gate, runtime, floodGuard, policyRuntime);
   await uiRoutes(app);
 
   return { app, engine, gate, runtime, policyRuntime, reloadPolicy };
