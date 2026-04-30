@@ -43,7 +43,7 @@ This closes the end-to-end operator story: **detect → route to approval → op
 ## Quickstart
 
 ```bash
-git clone https://github.com/<your-org-or-user>/agentwall.git
+git clone https://github.com/reesepj/agentwall.git
 cd agentwall
 npm install
 npm run build
@@ -54,11 +54,24 @@ node dist/cli.js start
 
 Default address: `http://127.0.0.1:3000`
 
-Run tests:
+Run tests and the live smoke check:
 
 ```bash
 npm test
+npm run smoke:local
 ```
+
+`npm run smoke:local` expects Agentwall to already be running. Override the target with `AGENTWALL_URL=http://host:port npm run smoke:local`.
+
+Run the local deploy readiness check:
+
+```bash
+npm run deploy:check
+npm run start
+AGENTWALL_URL=http://127.0.0.1:3000 npm run smoke:local
+```
+
+`npm run deploy:check` installs locked dependencies if needed, then runs type-check, build, tests, and high-severity audit before printing the exact start and smoke commands.
 
 ## CLI
 
@@ -76,6 +89,8 @@ agentwall help
 This repository includes a practical OSS launch baseline:
 
 - CI workflow for lint/build/test/audit (`.github/workflows/ci.yml`)
+- GitHub Pages workflow for the static launch surface (`.github/workflows/pages.yml`, publishing `public/`)
+- Local deploy readiness script (`npm run deploy:check`, backed by `scripts/deploy.sh`)
 - Security + contribution community files (`SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`)
 - Issue + PR templates (`.github/ISSUE_TEMPLATE/*`, `.github/pull_request_template.md`)
 - Architecture, threat model, and release strategy docs in `docs/`

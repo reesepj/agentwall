@@ -55,7 +55,7 @@ Prompt safety and static filters are not enough for runtime behavior. Agentwall 
 ## 5) Installation + CLI Story
 
 ```bash
-git clone https://github.com/your-org/agentwall
+git clone https://github.com/reesepj/agentwall.git
 cd agentwall
 npm install
 npm run onboard
