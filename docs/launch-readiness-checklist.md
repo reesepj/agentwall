@@ -44,7 +44,7 @@ Only true last-mile maintainer/admin steps are left unchecked.
 
 ## 6) Immediate post-launch guardrails
 - [ ] Enable notifications/triage routine for issues and security reports.
-- [ ] Prepare first three community issues (`good first issue` + `help wanted`).
+- [x] Prepare first three community issues (`good first issue` + `help wanted`) in `docs/community-issues-seed.md`, including copy-ready bodies and `gh issue create` commands for when GitHub auth is available.
 - [ ] Open first public roadmap milestone and label policy.
 
 ---
