@@ -35,8 +35,9 @@ Only true last-mile maintainer/admin steps are left unchecked.
 
 ## 5) Last-mile admin (maintainer-owned)
 - [ ] Configure GitHub repo description, topics, homepage, and social preview image.
-- [ ] Decide canonical public clone URL/org and update README if needed.
-- [ ] Enable GitHub Pages source as `GitHub Actions` after the repo is public.
+- [x] Canonical public clone URL selected and reflected in README (`https://github.com/reesepj/agentwall.git`).
+- [ ] Push the launch branch once GitHub auth is available. Current blocker: local GitHub HTTPS auth is unavailable (`fatal: could not read Username for 'https://github.com'`). Exact next command: `gh auth login && git push -u origin gnhf/mission-finish-agent-7891a0`.
+- [ ] Enable GitHub Pages source as `GitHub Actions` after the repo is public. If GitHub auth is unavailable locally, run: `gh auth login`, then push this branch and enable Pages from Actions in repository settings.
 - [ ] Create initial release tag (`v0.1.0`) and attach release notes.
 - [ ] Publish announcement post (problem, why now, demo, quickstart, roadmap).
 - [ ] Final external account setup items chosen by the maintainer (public inboxes + service accounts).

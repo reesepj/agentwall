@@ -43,7 +43,7 @@ This closes the end-to-end operator story: **detect → route to approval → op
 ## Quickstart
 
 ```bash
-git clone https://github.com/<your-org-or-user>/agentwall.git
+git clone https://github.com/reesepj/agentwall.git
 cd agentwall
 npm install
 npm run build
