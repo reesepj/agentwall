@@ -27,12 +27,16 @@ Only true last-mile maintainer/admin steps are left unchecked.
 ## 4) Adoption readiness
 - [x] Minimal sample config and policy files are valid.
 - [x] `npm test` and `npm run build` pass.
+- [x] Local deploy readiness path scripted (`npm run deploy:check`) and documented.
+- [x] Live runtime smoke path scripted (`npm run smoke:local`) and documented.
 - [x] Version is set (`0.1.0`) and changelog drafted (`CHANGELOG.md`).
 - [x] CI automation in place (`.github/workflows/ci.yml`).
+- [x] GitHub Pages workflow present for static launch surface (`.github/workflows/pages.yml`).
 
 ## 5) Last-mile admin (maintainer-owned)
 - [ ] Configure GitHub repo description, topics, homepage, and social preview image.
 - [ ] Decide canonical public clone URL/org and update README if needed.
+- [ ] Enable GitHub Pages source as `GitHub Actions` after the repo is public.
 - [ ] Create initial release tag (`v0.1.0`) and attach release notes.
 - [ ] Publish announcement post (problem, why now, demo, quickstart, roadmap).
 - [ ] Final external account setup items chosen by the maintainer (public inboxes + service accounts).

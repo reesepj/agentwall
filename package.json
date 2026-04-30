@@ -12,6 +12,7 @@
     "test": "node --experimental-vm-modules node_modules/.bin/jest",
     "lint": "tsc --noEmit",
     "smoke:local": "node scripts/smoke-local.js",
+    "deploy:check": "bash scripts/deploy.sh",
     "cli": "node dist/cli.js",
     "init": "node dist/cli.js init",
     "doctor": "node dist/cli.js doctor"
@@ -30,6 +31,7 @@
     "examples/",
     "scripts/agentwall-install.sh",
     "scripts/agentwall-uninstall.sh",
+    "scripts/deploy.sh",
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
