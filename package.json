@@ -24,6 +24,17 @@
     "ai-safety"
   ],
   "license": "MIT",
+  "files": [
+    "dist/",
+    "public/",
+    "examples/",
+    "scripts/agentwall-install.sh",
+    "scripts/agentwall-uninstall.sh",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "SECURITY.md"
+  ],
   "dependencies": {
     "fastify": "^5.8.4",
     "js-yaml": "^4.1.0",
